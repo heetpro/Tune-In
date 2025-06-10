@@ -78,4 +78,50 @@ export interface IMusicProfile {
     lastSyncAt: Date;
 }
 
+export interface ITrack {
+    spotifyId: string;
+    name: string;
+    artists: IArtist[];
+    album: IAlbum;
+    duration: number;
+    popularity: number;
+    explicit: boolean;
+    previewUrl?: string;
+    externalUrl: {
+        spotify: string;
+    };
+    audioFeatures?: IAudioFeatures;
+    playCount?: number;
+    lastPlayedAt?: Date;
+
+}
+
+
+export interface IArtist {
+    spotifyId: string;
+    name: string;
+    genres: string[];
+    popularity: number;
+    followers: number;
+    images: ISpotifyImage[];
+    externalUrl: {
+        spotify: string;
+    };
+}
+
+export interface IAlbum {
+    spotifyId: string;
+    name: string;
+    artists: IArtist[];
+    images: ISpotifyImage[];
+    releaseDate: Date;
+    totalTracks: number;
+    popularity: number;
+    externalUrl: {
+        spotify: string;
+    };
+}
+
+
+
 
