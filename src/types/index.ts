@@ -330,7 +330,50 @@ export interface IAdmin {
 export interface IAnalytics {
     _id: string;
     date: Date;
-
+    
     dailyActiveUsers: number;
     newRegistrations: number;
-}
+    totalUsers: number;
+    
+    totalMatches: number;
+    mutualMatches: number;
+    averageMatchScore: number;
+    
+    totalTracksShared: number;
+    uniqueArtistsDiscovered: number;
+    playlistsCreated: number;
+    
+    averageSessionDuration: number;
+    messagesExchanged: number;
+    averageMessagesPerConversation: number;
+    
+    createdAt: Date;
+  }
+
+
+  export interface IErrorLog {
+    _id: string;
+    userId?: string;
+    
+    error: {
+      message: string;
+      stack: string;
+      code?: string;
+    };
+    
+    request: {
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+      body?: any;
+      userAgent: string;
+      ip: string;
+    };
+    
+    timestamp: Date;
+    environment: 'development' | 'staging' | 'production';
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    
+    resolved: boolean;
+    resolvedAt?: Date;
+  }
