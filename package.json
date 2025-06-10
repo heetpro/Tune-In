@@ -9,6 +9,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/jsonwebtoken": "^9.0.9",
+    "@types/mongoose": "^5.11.97",
     "@types/morgan": "^1.9.10",
     "@types/node": "^24.0.0"
   },
