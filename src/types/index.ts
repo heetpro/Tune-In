@@ -156,3 +156,181 @@ export interface IAudioFeatures {
     timeSignature: number;
 }
 
+export interface IGenre {
+    name: string;
+    weight: number;
+}
+
+export interface ICurrentTrack extends ITrack {
+    isPlaying: boolean;
+    progressMs: number;
+    timestamp: Date;
+}
+
+export interface ISpotifyImage {
+    url: string;
+    height?: number;
+    width?: number;
+}
+
+export interface IMatch {
+    _id: string;
+    user1Id: string;
+    user2Id: string;
+
+    matchScore: number;
+    musicCompatibility: IMatchCompatibility;
+    
+
+    status: 'pending' | 'accepted' | 'rejected';
+    initiatedBy: string;
+
+    createdAt: Date;
+    expiresAt: Date;
+    becameMutualAt?: Date;
+}
+
+export interface IMatchCompatibility {
+    overallScore: number;
+    artistMatch: number;
+    genreMatch: number;
+    audioFeaturesMatch: number;
+    playlistSimilarity: number;
+
+    sharedArtists: IArtist[];
+    sharedGenres: string[];
+    sharedTracks: ITrack[];
+
+    reasons: string[];
+}
+
+
+export interface IConversation {
+    _id: string;
+    matchId: string;
+    participants: string[];
+
+    lastMessage?: IMessage;
+    lastActivity: Date;
+
+    messageCount: {
+        [userId: string]: number;
+    };
+    isActive: boolean;
+
+
+    sharedTracks: ISharedTrack[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface IMessage {
+    _id: string;
+    conversationId: string;
+    senderId: string;
+
+    content: string;
+    messageType: 'text' | 'playlist' | 'system';
+
+    sharedContent?: {
+        type: 'track' | 'playlist';
+        spotifyId: string;
+        data: ITrack | IPlaylist;
+    };
+
+    isRead: boolean;
+    readAt?: Date;
+    isDelivered: boolean;
+    deliveredAt?: Date;
+    
+    sentAt: Date;
+    editedAt?: Date;
+    deletedAt?: Date;
+    isDeleted: boolean;
+    
+}
+
+export interface ISharedTrack {
+    _id: string;
+    userId: string;
+    tragetedUserId: string;
+
+    action: 'liked' | 'pass' | 'super_like';
+
+
+    context: {
+        musicScore: number;
+        sharedArtists: string[];
+        sharedGenres: string[];
+    }
+
+    createdAt: Date;
+}
+
+
+export interface IDailyRolls {
+    _id: string;
+    userId: string;
+    date: Date;
+    rollsUsed: number;
+    maxRolls: number;
+
+    usersShown: string[];
+    createdAt: Date;
+}
+
+export interface INotification {
+    _id: string;
+    userId: string;
+
+    type: 'new_match' | 'new_message' | 'new_like' | 'music_update';
+    title: string;
+    message: string;
+
+    relatedId?: string;
+    relatedType?: 'match' | 'conversation' | 'user';
+
+    isRead: boolean;
+    readAt?: Date;
+
+    createdAt: Date;
+}
+
+
+export interface IReport{
+    _id: string;
+    reporterId: string;
+    reportedUserId: string;
+
+    reason: 'inappropriate_content' | 'spam' | 'fake_profile' | 'harassment' | 'other';
+    description?: string;
+    
+
+    screenshot?: string[];
+    conversationId?: string;
+    messageIds?: string[];
+
+    status: 'pending' | 'investigating' | 'resolved' | 'dismissed';
+    resolution?: string;
+    resolvedBy?: string;
+    resolvedAt?: Date;
+
+    createdAt: Date;
+}
+
+export interface IAdmin {
+    _id: string;
+    userId: string;
+    role: 'admin' | 'moderator';
+    permissions: string[];
+    isActive: boolean;
+    createdAt: Date;
+}
+
+export interface IAnalytics {
+    _id: string;
+    date: Date;
+
+    dailyActiveUsers: number;
+    newRegistrations: number;
+}
