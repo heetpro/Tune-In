@@ -122,6 +122,37 @@ export interface IAlbum {
     };
 }
 
+export interface IPlaylist {
+    spotifyId: string;  
+    public: boolean;
+    name: string;
+    description?: string;
+    collaborative: boolean;
+    owner: {
+        spotifyId: string;
+        displayName: string;
+    };
+    tracks: ITrack[];
+    images: ISpotifyImage[];
+    followerCount: number;
+    externalUrl: {
+        spotify: string;
+    };
+}
 
 
+export interface IAudioFeatures {
+    danceability: number;
+    energy: number;
+    key: number;
+    mode: number;
+    speechiness: number;
+    loudness: number;
+    acousticness: number;
+    instrumentalness: number;
+    liveness: number;
+    valence: number;
+    tempo: number;
+    timeSignature: number;
+}
 
