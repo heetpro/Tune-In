@@ -377,3 +377,25 @@ export interface IAnalytics {
     resolved: boolean;
     resolvedAt?: Date;
   }
+
+  export interface IRateLimit {
+    _id: string;
+    identifier: string; 
+    endpoint: string;
+    
+    requests: {
+      timestamp: Date;
+      method: string;
+      userAgent?: string;
+    }[];
+    
+    windowStart: Date;
+    count: number;
+    
+    isBlocked: boolean;
+    blockedUntil?: Date;
+    blockReason?: string;
+    
+    createdAt: Date;
+    updatedAt: Date;
+  }
