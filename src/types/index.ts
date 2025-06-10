@@ -409,3 +409,46 @@ export interface IAnalytics {
     accessCount: number;
     lastAccessedAt: Date;
   }
+
+  export interface IAppConfig {
+    _id: string;
+    key: string;
+    value: any;
+    description: string;
+    
+    version: number;
+    isActive: boolean;
+    
+    updatedBy: string; 
+    createdAt: Date;
+    updatedAt: Date;
+  }
+  
+
+  export interface ISession {
+    _id: string;
+    userId: string;
+    sessionToken: string;
+    
+    deviceInfo: {
+      userAgent: string;
+      ip: string;
+      platform?: string;
+      browser?: string;
+    };
+    
+    location?: {
+      city: string;
+      country: string;
+      coordinates: {
+        lat: number;
+        lng: number;
+      };
+    };
+    
+    isActive: boolean;
+    lastActivity: Date;
+    expiresAt: Date;
+    
+    createdAt: Date;
+  }
