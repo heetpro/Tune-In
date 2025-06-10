@@ -51,6 +51,31 @@ export interface IMusicProfile {
     spotifyRefreshToken?: string;
     spotifyTokenExpiresAt?: Date;
 
-    
+    currentlyPlaying?: ICurrentTrack;
+    recentTracks: ITrack[];
 
+
+    topArtists: {
+        short_term: IArtist[];
+        medium_term: IArtist[];
+        long_term: IArtist[];
+    }
+
+    topTracks: {
+        short_term: ITrack[];
+        medium_term: ITrack[];
+        long_term: ITrack[];
+    };
+
+
+    topGenres: IGenre[];
+    audioFeatures: IAudioFeatures;
+
+    playlists: IPlaylist[];
+
+    compatibilityScore: Map<string, number>;
+
+    lastSyncAt: Date;
 }
+
+
