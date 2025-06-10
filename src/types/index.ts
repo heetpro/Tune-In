@@ -399,3 +399,13 @@ export interface IAnalytics {
     createdAt: Date;
     updatedAt: Date;
   }
+
+  export interface ICacheEntry {
+    key: string;
+    value: any;
+    expiresAt?: Date;
+    tags?: string[];
+    createdAt: Date;
+    accessCount: number;
+    lastAccessedAt: Date;
+  }
