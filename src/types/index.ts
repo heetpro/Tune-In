@@ -451,4 +451,4 @@ export interface IAnalytics {
     expiresAt: Date;
     
     createdAt: Date;
-  }
+  } 
