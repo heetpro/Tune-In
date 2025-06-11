@@ -4,7 +4,6 @@ export interface IUser {
     _id: string;
     googleId: string;
     spotifyId: string;
-    email: string;
     displayName: string;
     firstName: string;
     lastName: string;
