@@ -1,8 +1,8 @@
 import type { IMusicProfile } from "@/types";
-import mongoose, {model, Schema } from "mongoose";
+import mongoose, { Schema } from "mongoose";
 
 
-export const MusicProfileSchema = new Schema({
+export const MusicProfileSchema = new Schema<IMusicProfile>({
     spotifyConnected: {
         type: Boolean,
         default: false,
@@ -23,30 +23,30 @@ export const MusicProfileSchema = new Schema({
         type: Schema.Types.ObjectId,
         ref: "Track",
     },
-    recentTracks: {
-        type: [Schema.Types.ObjectId],
+    recentTracks: [{
+        type: Schema.Types.Mixed,
         ref: "Track",
-    },
-    topArtists: {
-        type: [Schema.Types.ObjectId],
+    }],
+    topArtists: [{
+        type: Schema.Types.ObjectId,
         ref: "Artist",
-    },
-    topTracks: {
-        type: [Schema.Types.ObjectId],
+    }],
+    topTracks: [{
+        type: Schema.Types.ObjectId,
         ref: "Track",
-    },
-    topGenres: {
-        type: [Schema.Types.ObjectId],
+    }],
+    topGenres: [{
+        type: Schema.Types.ObjectId,
         ref: "Genre",
-    },
+    }],
     audioFeatures: {
         type: Schema.Types.ObjectId,
         ref: "AudioFeatures",
     },
-    playlists: {
-        type: [Schema.Types.ObjectId],
+    playlists: [{
+        type: Schema.Types.ObjectId,
         ref: "Playlist",
-    },
+    }],
     compatibilityScore: {
         type: Map,
     },
