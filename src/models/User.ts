@@ -2,7 +2,7 @@ import type { IUser } from "@/types";
 import mongoose, { Schema , model} from "mongoose";
 
 
-export const UserSchema = new Schema({
+export const UserSchema = new Schema<IUser>({
     googleId: {
         type: String,
         required: true,
@@ -61,8 +61,13 @@ export const UserSchema = new Schema({
         type: Date,
     },
     dailyRolls: {
-        type: Number,
-        default: 0,
+        date: {
+            type: Date,
+            default: Date.now,
+        },
+        count: {
+            type: Number,
+        },
     },
     musicProfile: {
         type: Schema.Types.ObjectId,
