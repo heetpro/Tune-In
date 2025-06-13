@@ -1,12 +1,12 @@
-// first defining basic types.
+import { Document } from "mongoose";
 
-export interface IUser {
+export interface IUser extends Document {
     _id: string;
     googleId: string;
     spotifyId: string;
     displayName: string;
     firstName: string;
-    lastName: string;
+    lastName?: string;
     profilePicture: string;
     bio: string;
     age: number;
