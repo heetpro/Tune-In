@@ -11,7 +11,6 @@ export const getChat = async (req: AuthRequest, res: Response) => {
           return res.status(400).json({ error: 'Cannot create conversation with yourself' });
         }
     
-        // Check if conversation already exists
         const existingConversation = await Conversation.findOne({
           participants: { $all: [userId, participantId] },
           isActive: true
@@ -21,7 +20,6 @@ export const getChat = async (req: AuthRequest, res: Response) => {
           return res.json(existingConversation);
         }
     
-        // Create new conversation
         const conversation = new Conversation({
           matchId: `${userId}_${participantId}`,
           participants: [userId, participantId],
