@@ -20,3 +20,5 @@ router.get('/login/callback', asyncHandler(getCallback));
 
 
 router.get('/profile/me', authenticate, asyncHandler(getProfile));
+
+export default router;
