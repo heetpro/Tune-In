@@ -15,44 +15,52 @@ export const getCallback = async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Authorization code not provided' });
         }
 
+        console.log('Callback received with code:', code);
+
         // Get access token from Spotify
-        const tokenData = await spotify.getAccessToken(code as string);
-        const userProfile = await spotify.getUserProfile(tokenData.access_token);
+        try {
+            const tokenData = await spotify.getAccessToken(code as string);
+            console.log('Token data received from Spotify');
+            
+            const userProfile = await spotify.getUserProfile(tokenData.access_token);
+            console.log('User profile received:', userProfile.id);
+            
+            // Check if user exists
+            let user = await User.findOne({ spotifyId: userProfile.id });
 
-        // Check if user exists
-        let user = await User.findOne({ spotifyId: userProfile.id });
+            if (!user) {
+                // Create new user
+                user = new User({
+                    spotifyId: userProfile.id,
+                    displayName: userProfile.display_name || userProfile.id,
+                    firstName: userProfile.display_name?.split(' ')[0] || userProfile.id,
+                    lastName: userProfile.display_name?.split(' ').slice(1).join(' ') || '',
+                    profilePicture: userProfile.images?.[0]?.url || '',
+                    isActive: true,
+                    isOnline: true,
+                    lastSeen: new Date(),
+                });
 
-        if (!user) {
-            // Create new user
-            user = new User({
-                googleId: '', // Will be filled when Google auth is implemented
-                spotifyId: userProfile.id,
-                displayName: userProfile.display_name || userProfile.id,
-                firstName: userProfile.display_name?.split(' ')[0] || userProfile.id,
-                lastName: userProfile.display_name?.split(' ').slice(1).join(' ') || '',
-                profilePicture: userProfile.images?.[0]?.url || '',
-                isActive: true,
-                isOnline: true,
-                lastSeen: new Date(),
-            });
+                await user.save();
+            } else {
+                // Update existing user
+                user.isOnline = true;
+                user.lastSeen = new Date();
+                await user.save();
+            }
 
-            await user.save();
-        } else {
-            // Update existing user
-            user.isOnline = true;
-            user.lastSeen = new Date();
-            await user.save();
+            // Generate tokens
+            const token = generateToken({ id: user._id, spotifyId: user.spotifyId });
+            const refreshToken = generateRefreshToken({ id: user._id });
+
+            // Redirect to frontend with token
+            return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/success?token=${token}&refresh=${refreshToken}`);
+        } catch (error) {
+            console.error('Spotify auth error:', error);
+            return res.status(500).json({ error: 'Authentication failed' });
         }
-
-        // Generate tokens
-        const token = generateToken({ id: user._id, spotifyId: user.spotifyId });
-        const refreshToken = generateRefreshToken({ id: user._id });
-
-        // Redirect to frontend with token
-         return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/success?token=${token}&refresh=${refreshToken}`);
     } catch (error) {
-        console.error('Spotify auth error:', error);
-        return res.status(500).json({ error: 'Authentication failed' });
+        console.error('Callback error:', error);
+        return res.status(500).json({ error: 'An error occurred' });
     }
-
 }

@@ -58,6 +58,10 @@ const startServer = async () => {
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
+      console.log(`Spotify redirect URI: ${process.env.SPOTIFY_REDIRECT_URI}`);
+      console.log(`Auth routes are mounted at: /auth`);
+      console.log(`Login URL: /auth/spotify/login`);
+      console.log(`Callback URL: /auth/spotify/callback`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

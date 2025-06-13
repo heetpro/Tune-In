@@ -2,7 +2,6 @@ import { Document } from "mongoose";
 
 export interface IUser extends Document {
     _id: string;
-    googleId: string;
     spotifyId: string;
     displayName: string;
     firstName: string;

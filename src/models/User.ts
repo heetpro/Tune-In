@@ -3,11 +3,7 @@ import mongoose, { Schema , model} from "mongoose";
 
 
 export const UserSchema = new Schema<IUser>({
-    googleId: {
-        type: String,
-        required: true,
-        unique: true,
-    },
+   
     spotifyId: {
         type: String,
         required: true,

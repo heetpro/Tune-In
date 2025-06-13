@@ -10,13 +10,13 @@ import { getProfile } from "@/functions/getProfile";
 const router = Router();
 const spotify = new spotifyService();
 
-router.get('/login', (req, res) => {
+router.get('/spotify/login', (req, res) => {
     const authUrl = spotify.getAuthUrl();
     res.redirect(authUrl);
 });
 
 
-router.get('/login/callback', asyncHandler(getCallback));
+router.get('/spotify/callback', asyncHandler(getCallback));
 
 
 router.get('/profile/me', authenticate, asyncHandler(getProfile));
