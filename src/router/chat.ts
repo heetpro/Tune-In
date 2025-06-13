@@ -1,7 +1,7 @@
-import { getChat } from "@/fumctions/getChat";
-import { getChats } from "@/fumctions/getChats";
-import { getMessages } from "@/fumctions/getMessages";
-import { readMessages } from "@/fumctions/readMessages";
+import { getChat } from "@/functions/getChat";
+import { getChats } from "@/functions/getChats";
+import { getMessages } from "@/functions/getMessages";
+import { readMessages } from "@/functions/readMessages";
 import { asyncHandler } from "@/handlers/errorHandler";
 import { authenticate } from "@/middleware/auth";
 import { Router } from "express";

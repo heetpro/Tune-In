@@ -2,9 +2,9 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { spotifyService } from "@/lib/spotify";
 import { asyncHandler } from "@/handlers/errorHandler";
-import { getCallback } from "@/fumctions/getCallback";
+import { getCallback } from "@/functions/getCallback";
 import { authenticate } from "@/middleware/auth";
-import { getProfile } from "@/fumctions/getProfile";
+import { getProfile } from "@/functions/getProfile";
 
 
 const router = Router();
