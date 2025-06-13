@@ -11,8 +11,8 @@ export const rateLimiter = rateLimit({
   
 });
 
-export const slowDownMiddleware = slowDown({
-    windowMs: 15 * 60 * 1000,
-    delayAfter: parseInt(process.env.RATE_LIMIT_SLOW_DOWN || '50'),
-    delayMs: 500,
-})
+// export const slowDownMiddleware = slowDown({
+//     windowMs: 15 * 60 * 1000,
+//     delayAfter: parseInt(process.env.RATE_LIMIT_SLOW_DOWN || '50'),
+//     delayMs: 500,
+// })

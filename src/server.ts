@@ -10,7 +10,7 @@ import { SocketHandler } from './handlers/socketHandler';
 
 import authRoutes from './router/auth';
 import chatRoutes from './router/chat';
-import { rateLimiter, slowDownMiddleware } from './middleware/rateLimiter';
+import { rateLimiter } from './middleware/rateLimiter';
 import connectDB from './lib/database';
 
 dotenv.config();
@@ -29,7 +29,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(rateLimiter);
-app.use(slowDownMiddleware);
+// app.use(slowDownMiddleware);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
@@ -45,7 +45,7 @@ app.use((error: any, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.use('*', (req, res) => {
+app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 

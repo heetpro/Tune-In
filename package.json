@@ -16,6 +16,12 @@
   "peerDependencies": {
     "typescript": "^5.8.3"
   },
+  "scripts": {
+    "dev": "bun run --watch src/server.ts",
+    "build": "tsc",
+    "start": "bun run dist/server.js",
+    "lint": "eslint src/**/*.ts"
+  },
   "dependencies": {
     "axios": "^1.9.0",
     "bcryptjs": "^3.0.2",
