@@ -183,5 +183,9 @@ export class SocketHandler {
             });
           });
     }
+
+    public getIO(): SocketIOServer {
+        return this.io;
+      }
 }
 
