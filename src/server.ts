@@ -33,13 +33,5 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 
-app.use(session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: true,
-    store: new MongoStore({ mongooseConnection: mongoose.connection }),
-    cookie: { secure: process.env.NODE_ENV === "production" }
-}));
-
 
 

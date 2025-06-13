@@ -37,4 +37,5 @@ export const config = {
     cache: {
         ttl: process.env.CACHE_TTL || 60 * 60 * 1000,
     },
+
 }
