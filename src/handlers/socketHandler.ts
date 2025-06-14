@@ -4,6 +4,7 @@ import { Server } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import Message from "@/models/Message";
 import Conversation from "@/models/Conversation";
+import Match from "@/models/Match";
 
 
 export class SocketHandler {
@@ -76,6 +77,37 @@ export class SocketHandler {
                 const conversation = await Conversation.findById(conversationId);
                 if (!conversation || !conversation.participants.includes(user._id.toString())) {
                   socket.emit('error', { message: 'Unauthorized' });
+                  return;
+                }
+
+                // Get the other participant
+                const otherParticipantId = conversation.participants.find(
+                  p => p !== user._id.toString()
+                );
+                
+                if (!otherParticipantId) {
+                  socket.emit('error', { message: 'Invalid conversation participants' });
+                  return;
+                }
+                
+                // Verify users can chat (are friends or have a match)
+                const currentUser = await User.findById(user._id);
+                const areFriends = currentUser?.friends.includes(otherParticipantId);
+                
+                const match = await Match.findOne({
+                  $or: [
+                    { user1Id: user._id.toString(), user2Id: otherParticipantId },
+                    { user1Id: otherParticipantId, user2Id: user._id.toString() }
+                  ],
+                  status: 'accepted'
+                });
+                
+                const haveMatch = !!match;
+                
+                if (!areFriends && !haveMatch) {
+                  socket.emit('error', { 
+                    message: 'Cannot send messages. Users must be friends or have a match'
+                  });
                   return;
                 }
       

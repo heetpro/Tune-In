@@ -13,7 +13,6 @@ export const getChat = async (req: AuthRequest, res: Response) => {
           return res.status(400).json({ error: 'Cannot create conversation with yourself' });
         }
     
-        // Check if users are friends or have a match
         const user = await User.findById(userId);
         
         if (!user) {
@@ -22,7 +21,6 @@ export const getChat = async (req: AuthRequest, res: Response) => {
         
         const areFriends = user.friends.includes(participantId);
         
-        // Check for match
         const match = await Match.findOne({
           $or: [
             { user1Id: userId, user2Id: participantId },
@@ -33,7 +31,6 @@ export const getChat = async (req: AuthRequest, res: Response) => {
         
         const haveMatch = !!match;
         
-        // Only allow conversation if users are friends or have a match
         if (!areFriends && !haveMatch) {
           return res.status(403).json({ 
             error: 'Cannot create conversation. Users must be friends or have a match',

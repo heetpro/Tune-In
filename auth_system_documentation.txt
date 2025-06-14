@@ -126,6 +126,22 @@ const UserSchema = new Schema<IUser>({
         ref: "MusicProfile",
     },
     
+    // Friend system fields
+    friends: {
+        type: [String],
+        default: [],
+    },
+    friendRequests: {
+        incoming: {
+            type: [String],
+            default: [],
+        },
+        outgoing: {
+            type: [String],
+            default: [],
+        },
+    },
+    
     // Settings
     privacySettings: {
         type: Object,
@@ -141,6 +157,7 @@ const UserSchema = new Schema<IUser>({
             newMessages: true,
             newLikes: true,
             newMatches: true,
+            newFriendRequests: true,
         },
     },
     
@@ -162,6 +179,10 @@ const UserSchema = new Schema<IUser>({
     },
     banExpiresAt: {
         type: Date,
+    },
+    isAdmin: {
+        type: Boolean,
+        default: false,
     }
 });
 
@@ -191,6 +212,11 @@ interface IUser extends Document {
         count: number;
     };
     musicProfile: IMusicProfile;
+    friends: string[];
+    friendRequests: {
+        incoming: string[];
+        outgoing: string[];
+    };
     privacySettings: {
         showAge: boolean;
         showLocation: boolean;
@@ -200,12 +226,14 @@ interface IUser extends Document {
         newMessages: boolean;
         newLikes: boolean;
         newMatches: boolean;
+        newFriendRequests: boolean;
     };
     isPremium: boolean;
     isVerified: boolean;
     isBanned: boolean;
     banReason?: string;
     banExpiresAt?: Date;
+    isAdmin?: boolean;
 }
 ```
 
@@ -264,3 +292,117 @@ When implementing the frontend:
    - Redirects user to main app
 3. Set up API calls with Authorization header
 4. Implement token refresh logic when original token expires 
+
+## Friend System
+
+The application includes a friend system with the following functionality:
+
+### Friend Request Schema
+
+```javascript
+const FriendRequestSchema = new Schema<IFriendRequest>({
+    senderId: {
+        type: String,
+        required: true,
+    },
+    receiverId: {
+        type: String,
+        required: true,
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'accepted', 'rejected'],
+        default: 'pending',
+        required: true,
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+        required: true,
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now,
+        required: true,
+    },
+    respondedAt: {
+        type: Date,
+        required: false,
+    },
+});
+```
+
+### Friend Endpoints
+
+1. **Get all friends**
+   - `GET /api/friends`
+   - Returns a list of all friends for the authenticated user
+
+2. **Get all friend requests**
+   - `GET /api/friends/requests`
+   - Returns all incoming and outgoing friend requests for the authenticated user
+
+3. **Send a friend request**
+   - `POST /api/friends/request`
+   - Body: `{ "receiverId": "user-id-here" }`
+   - Sends a friend request to the specified user
+
+4. **Accept a friend request**
+   - `PUT /api/friends/request/:requestId/accept`
+   - Accepts a pending friend request
+
+5. **Reject a friend request**
+   - `PUT /api/friends/request/:requestId/reject`
+   - Rejects a pending friend request
+
+6. **Remove a friend**
+   - `DELETE /api/friends/:friendId`
+   - Removes a user from the friends list
+
+## Chat System
+
+The application includes a real-time chat system using Socket.io with the following rules:
+
+1. Users can only chat with:
+   - Users they have matched with (mutual match status = "accepted")
+   - Users they are friends with
+
+### Chat Endpoints
+
+1. **Get all conversations**
+   - `GET /api/chat`
+   - Returns all active conversations for the authenticated user
+
+2. **Create/Get a conversation**
+   - `POST /api/chat/chat`
+   - Body: `{ "participantId": "user-id-here" }`
+   - Creates a new conversation or returns an existing one with the specified user
+   - Requires users to be friends or have a match
+
+3. **Get conversation messages**
+   - `GET /api/chat/chat/:conversationId/messages`
+   - Returns paginated messages for the specified conversation
+
+4. **Mark messages as read**
+   - `PATCH /api/chat/chat/:conversationId/read`
+   - Marks all messages in a conversation as read
+
+### Socket.io Events
+
+1. **Connection Authentication**
+   - Clients must provide a valid JWT token in the connection handshake
+
+2. **Events Client can Emit**
+   - `send_message`: Send a new message in a conversation
+   - `mark_read`: Mark a message as read
+   - `typing_start`: Indicate user has started typing
+   - `typing_stop`: Indicate user has stopped typing
+
+3. **Events Client will Receive**
+   - `new_message`: When a new message is received
+   - `message_delivered`: When a message is delivered
+   - `message_read`: When a message is read
+   - `user_typing`: When another user starts typing
+   - `user_stopped_typing`: When another user stops typing
+   - `user_offline`: When another user goes offline
+   - `error`: When an error occurs 

@@ -3,6 +3,7 @@ import { Document } from "mongoose";
 export interface IUser extends Document {
     _id: string;
     spotifyId: string;
+    username?: string;
     displayName: string;
     firstName: string;
     lastName?: string;
@@ -47,6 +48,7 @@ export interface IUser extends Document {
     banReason?: string;
     banExpiresAt?: Date;
     isAdmin?: boolean;
+    hasCompletedOnboarding: boolean;
 }
 
 // Add FriendRequest interface

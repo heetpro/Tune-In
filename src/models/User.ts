@@ -9,6 +9,16 @@ export const UserSchema = new Schema<IUser>({
         required: true,
         unique: true,
     },
+    username: {
+        type: String,
+        unique: true,
+        sparse: true, // Allows multiple null values
+        trim: true,
+        lowercase: true,
+        minlength: 3,
+        maxlength: 30,
+        match: [/^[a-z0-9._]+$/, 'Username can only contain letters, numbers, dots, and underscores'],
+    },
     displayName: {
         type: String,
         required: true,
@@ -120,6 +130,10 @@ export const UserSchema = new Schema<IUser>({
         type: Date,
     },
     isAdmin: {
+        type: Boolean,
+        default: false,
+    },
+    hasCompletedOnboarding: {
         type: Boolean,
         default: false,
     },
