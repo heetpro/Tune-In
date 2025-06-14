@@ -10,6 +10,7 @@ import { SocketHandler } from './handlers/socketHandler';
 
 import authRoutes from './router/auth';
 import chatRoutes from './router/chat';
+import friendRoutes from './router/friend';
 import { rateLimiter } from './middleware/rateLimiter';
 import connectDB from './lib/database';
 
@@ -33,6 +34,7 @@ app.use(rateLimiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/friends', friendRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
