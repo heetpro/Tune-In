@@ -1,0 +1,266 @@
+# SpotiLove Authentication System Documentation
+
+## Authentication Flow Overview
+
+The application uses Spotify OAuth for authentication. Here's the complete flow:
+
+1. **Initial Login Request**
+   - User clicks "Login with Spotify" button
+   - Frontend redirects to: `http://localhost:3001/api/auth/spotify/login` (backend)
+
+2. **Backend Redirects to Spotify**
+   - Backend generates Spotify authorization URL with required parameters
+   - User is redirected to Spotify's authorization page
+   - Path: `/api/auth/spotify/login`
+   - Implementation: `router.get('/spotify/login', (req, res) => { ... })`
+
+3. **Spotify Authorization**
+   - User authorizes the application on Spotify
+   - Spotify redirects back to the configured callback URL with authorization code
+
+4. **Callback Processing**
+   - Backend receives callback at: `/api/auth/spotify/callback`
+   - Path: `/api/auth/spotify/callback`
+   - Implementation: `router.get('/spotify/callback', asyncHandler(getCallback))`
+
+5. **Token Generation**
+   - Backend exchanges authorization code for Spotify access token
+   - Backend retrieves user profile from Spotify
+   - Backend creates or updates user in database
+   - Backend generates JWT token and refresh token
+   - Tokens payload includes: `{ id: user._id, spotifyId: user.spotifyId }`
+
+6. **Redirection to Frontend**
+   - Backend redirects to frontend with tokens as URL parameters
+   - Redirect URL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/success?token=${token}&refresh=${refreshToken}`
+
+7. **Frontend Token Management**
+   - Frontend extracts tokens from URL parameters
+   - Frontend stores tokens (usually in local storage or memory)
+   - Frontend uses tokens for authenticated requests
+
+## API Authentication
+
+For authenticated endpoints:
+
+1. Include JWT token in Authorization header: `Authorization: Bearer YOUR_TOKEN`
+2. Example for profile endpoint: `/api/auth/profile/me`
+3. This endpoint requires authentication middleware: `router.get('/profile/me', authenticate, asyncHandler(getProfile))`
+
+## User Schema
+
+Here's the complete User schema as implemented in the backend:
+
+```javascript
+const UserSchema = new Schema<IUser>({
+    // Required Spotify Auth Fields
+    spotifyId: {
+        type: String,
+        required: true,
+        unique: true,
+    },
+    displayName: {
+        type: String,
+        required: true,
+    },
+    firstName: {
+        type: String,
+        required: true,
+    },
+    lastName: {
+        type: String,
+        required: false,
+    },
+    profilePicture: {
+        type: String,
+    },
+    
+    // Profile Fields
+    bio: {
+        type: String,
+    },
+    age: {
+        type: Number,
+    },
+    gender: {
+        type: String,
+        enum: ['male', 'female', 'non-binary', 'other'],
+    },
+    intrestedIn: {
+        type: [String],
+    },
+    location: {
+        city: {
+            type: String,
+        },
+        country: {
+            type: String,
+        },
+    },
+    
+    // Status Fields
+    isActive: {
+        type: Boolean,
+        default: false,
+    },
+    isOnline: {
+        type: Boolean,
+        default: false,
+    },
+    lastSeen: {
+        type: Date,
+    },
+    
+    // App-specific Fields
+    dailyRolls: {
+        date: {
+            type: Date,
+            default: Date.now,
+        },
+        count: {
+            type: Number,
+        },
+    },
+    musicProfile: {
+        type: Schema.Types.ObjectId,
+        ref: "MusicProfile",
+    },
+    
+    // Settings
+    privacySettings: {
+        type: Object,
+        default: {
+            showAge: true,
+            showLocation: true,
+            showLastSeen: true,
+        },
+    },
+    notifications: {
+        type: Object,
+        default: {
+            newMessages: true,
+            newLikes: true,
+            newMatches: true,
+        },
+    },
+    
+    // Account Status
+    isPremium: {
+        type: Boolean,
+        default: false,
+    },
+    isVerified: {
+        type: Boolean,
+        default: false,
+    },
+    isBanned: {
+        type: Boolean,
+        default: false,
+    },
+    banReason: {
+        type: String,
+    },
+    banExpiresAt: {
+        type: Date,
+    }
+});
+
+// IUser TypeScript Interface
+interface IUser extends Document {
+    _id: string;
+    spotifyId: string;
+    displayName: string;
+    firstName: string;
+    lastName?: string;
+    profilePicture: string;
+    bio: string;
+    age: number;
+    gender: 'male' | 'female' | 'non-binary' | 'other';
+    intrestedIn: ('male' | 'female' | 'non-binary' | 'other')[];
+    location: {
+        city: string;
+        country: string;
+    };
+    isActive: boolean;
+    isOnline: boolean;
+    lastSeen: Date;
+    createdAt: Date;
+    updatedAt: Date;
+    dailyRolls: {
+        date: Date;
+        count: number;
+    };
+    musicProfile: IMusicProfile;
+    privacySettings: {
+        showAge: boolean;
+        showLocation: boolean;
+        showLastSeen: boolean;
+    };
+    notifications: {
+        newMessages: boolean;
+        newLikes: boolean;
+        newMatches: boolean;
+    };
+    isPremium: boolean;
+    isVerified: boolean;
+    isBanned: boolean;
+    banReason?: string;
+    banExpiresAt?: Date;
+}
+```
+
+## Music Profile Schema
+
+```javascript
+interface IMusicProfile {
+    spotifyConnected: boolean;
+    spotifyAccessToken?: string;
+    spotifyRefreshToken?: string;
+    spotifyTokenExpiresAt?: Date;
+    currentlyPlaying?: ICurrentTrack;
+    recentTracks: ITrack[];
+    topArtists: {
+        short_term: IArtist[];
+        medium_term: IArtist[];
+        long_term: IArtist[];
+    }
+    topTracks: {
+        short_term: ITrack[];
+        medium_term: ITrack[];
+        long_term: ITrack[];
+    };
+    topGenres: IGenre[];
+    audioFeatures: IAudioFeatures;
+    playlists: IPlaylist[];
+    compatibilityScore: Map<string, number>;
+    lastSyncAt: Date;
+}
+```
+
+## Testing Authentication
+
+To test the authentication flow:
+
+1. Make sure your Spotify Developer app has the correct callback URL:
+   - For backend-only: `http://localhost:3001/api/auth/spotify/callback`
+   - For frontend proxy: `http://localhost:3000/api/auth/spotify/callback`
+
+2. To test protected endpoints (like `/api/auth/profile/me`):
+   - Get a valid token by going through the login flow
+   - Make API requests with the Authorization header: `Authorization: Bearer YOUR_TOKEN`
+   - Example curl request:
+   ```
+   curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:3001/api/auth/profile/me
+   ```
+
+## Front-end Implementation Requirements
+
+When implementing the frontend:
+
+1. Create a "Login with Spotify" button that redirects to: `http://localhost:3001/api/auth/spotify/login`
+2. Create a success page at `/auth/success` that:
+   - Extracts token and refresh token from URL query parameters
+   - Stores tokens securely (localStorage, cookies, or memory)
+   - Redirects user to main app
+3. Set up API calls with Authorization header
+4. Implement token refresh logic when original token expires 

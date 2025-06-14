@@ -69,6 +69,21 @@ export const UserSchema = new Schema<IUser>({
         type: Schema.Types.ObjectId,
         ref: "MusicProfile",
     },
+    // Friend system fields
+    friends: {
+        type: [String],
+        default: [],
+    },
+    friendRequests: {
+        incoming: {
+            type: [String],
+            default: [],
+        },
+        outgoing: {
+            type: [String],
+            default: [],
+        },
+    },
     privacySettings: {
         type: Object,
         default: {
@@ -83,6 +98,7 @@ export const UserSchema = new Schema<IUser>({
             newMessages: true,
             newLikes: true,
             newMatches: true,
+            newFriendRequests: true,
         },
     },
     isPremium: {
@@ -102,6 +118,10 @@ export const UserSchema = new Schema<IUser>({
     },
     banExpiresAt: {
         type: Date,
+    },
+    isAdmin: {
+        type: Boolean,
+        default: false,
     },
     createdAt: {
         type: Date,

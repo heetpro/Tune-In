@@ -54,7 +54,7 @@ export const getCallback = async (req: Request, res: Response) => {
             const refreshToken = generateRefreshToken({ id: user._id });
 
             // Redirect to frontend with token
-            return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/success?token=${token}&refresh=${refreshToken}`);
+            return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/success?token=${token}&refresh=${refreshToken}`);
         } catch (error) {
             console.error('Spotify auth error:', error);
             return res.status(500).json({ error: 'Authentication failed' });

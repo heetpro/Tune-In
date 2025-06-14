@@ -25,6 +25,11 @@ export interface IUser extends Document {
         count: number;
     };
     musicProfile: IMusicProfile;
+    friends: string[];
+    friendRequests: {
+        incoming: string[];
+        outgoing: string[];
+    };
     privacySettings: {
         showAge: boolean;
         showLocation: boolean;
@@ -34,14 +39,26 @@ export interface IUser extends Document {
         newMessages: boolean;
         newLikes: boolean;
         newMatches: boolean;
+        newFriendRequests: boolean;
     };
     isPremium: boolean;
     isVerified: boolean;
     isBanned: boolean;
     banReason?: string;
     banExpiresAt?: Date;
-};
+    isAdmin?: boolean;
+}
 
+// Add FriendRequest interface
+export interface IFriendRequest {
+    _id: string;
+    senderId: string;
+    receiverId: string;
+    status: 'pending' | 'accepted' | 'rejected';
+    createdAt: Date;
+    updatedAt: Date;
+    respondedAt?: Date;
+}
 
 export interface IMusicProfile {
     spotifyConnected: boolean;
