@@ -27,9 +27,11 @@ export const getCallback = async (req: Request, res: Response) => {
             
             // Check if user exists
             let user = await User.findOne({ spotifyId: userProfile.id });
+            let isNewUser = false;
 
             if (!user) {
                 // Create new user
+                isNewUser = true;
                 user = new User({
                     spotifyId: userProfile.id,
                     displayName: userProfile.display_name || userProfile.id,
@@ -39,6 +41,7 @@ export const getCallback = async (req: Request, res: Response) => {
                     isActive: true,
                     isOnline: true,
                     lastSeen: new Date(),
+                    hasCompletedOnboarding: false // New users need to complete onboarding
                 });
 
                 await user.save();
@@ -53,8 +56,13 @@ export const getCallback = async (req: Request, res: Response) => {
             const token = generateToken({ id: user._id, spotifyId: user.spotifyId });
             const refreshToken = generateRefreshToken({ id: user._id });
 
-            // Redirect to frontend with token
-            return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/success?token=${token}&refresh=${refreshToken}`);
+            // Check if user has a username set
+            const needsUsername = isNewUser || !user.username;
+
+            // Redirect to frontend with token and onboarding status
+            const redirectUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/success?token=${token}&refresh=${refreshToken}&needsUsername=${needsUsername}`;
+            
+            return res.redirect(redirectUrl);
         } catch (error) {
             console.error('Spotify auth error:', error);
             return res.status(500).json({ error: 'Authentication failed' });
@@ -63,4 +71,4 @@ export const getCallback = async (req: Request, res: Response) => {
         console.error('Callback error:', error);
         return res.status(500).json({ error: 'An error occurred' });
     }
-}
+};

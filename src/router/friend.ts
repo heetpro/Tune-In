@@ -7,11 +7,15 @@ import { rejectFriendRequest } from "@/functions/rejectFriendRequest";
 import { getFriends } from "@/functions/getFriends";
 import { getFriendRequests } from "@/functions/getFriendRequests";
 import { removeFriend } from "@/functions/removeFriend";
+import { searchUsers } from "@/functions/searchUsers";
 
 const router = Router();
 
 // Get all friends
 router.get('/', authenticate, asyncHandler(getFriends));
+
+// Search for users by username
+router.get('/search', authenticate, asyncHandler(searchUsers));
 
 // Get all friend requests (incoming and outgoing)
 router.get('/requests', authenticate, asyncHandler(getFriendRequests));
@@ -28,4 +32,4 @@ router.put('/request/:requestId/reject', authenticate, asyncHandler(rejectFriend
 // Remove a friend
 router.delete('/:friendId', authenticate, asyncHandler(removeFriend));
 
-export default router; 
+export default router;

@@ -1,0 +1,403 @@
+# SpotiLove Frontend Implementation Guide
+
+This document outlines how to implement the authentication, username setup, friend system, and chat functionality in the frontend application.
+
+## Authentication Flow
+
+1. **Login Button**
+   ```jsx
+   <Button onClick={() => window.location.href = 'http://localhost:3001/api/auth/spotify/login'}>
+     Login with Spotify
+   </Button>
+   ```
+
+2. **Auth Success Page** (`/auth/success`)
+   - Extract token, refresh token, and onboarding status from URL parameters
+   ```javascript
+   const params = new URLSearchParams(window.location.search);
+   const token = params.get('token');
+   const refreshToken = params.get('refresh');
+   const needsUsername = params.get('needsUsername') === 'true';
+   
+   // Store tokens in localStorage or secure storage
+   localStorage.setItem('token', token);
+   localStorage.setItem('refreshToken', refreshToken);
+   
+   // Redirect based on onboarding status
+   if (needsUsername) {
+     navigate('/onboarding'); // Redirect to username setup page
+   } else {
+     navigate('/home'); // Redirect to main app
+   }
+   ```
+
+3. **API Request Helper**
+   ```javascript
+   const apiRequest = async (endpoint, options = {}) => {
+     const token = localStorage.getItem('token');
+     
+     const defaultOptions = {
+       headers: {
+         'Authorization': `Bearer ${token}`,
+         'Content-Type': 'application/json'
+       }
+     };
+     
+     const response = await fetch(`http://localhost:3001/api${endpoint}`, {
+       ...defaultOptions,
+       ...options
+     });
+     
+     if (!response.ok) {
+       const error = await response.json();
+       throw new Error(error.error || 'Something went wrong');
+     }
+     
+     return response.json();
+   };
+   ```
+
+## Username Setup (Onboarding)
+
+1. **Check Onboarding Status**
+   ```javascript
+   const checkOnboarding = async () => {
+     try {
+       const data = await apiRequest('/auth/onboarding');
+       if (!data.hasCompletedOnboarding) {
+         navigate('/onboarding');
+       }
+     } catch (error) {
+       console.error('Failed to check onboarding status:', error);
+     }
+   };
+   ```
+
+2. **Username Setup Form**
+   ```jsx
+   const [username, setUsername] = useState('');
+   const [error, setError] = useState('');
+   
+   const handleSubmit = async (event) => {
+     event.preventDefault();
+     setError('');
+     
+     try {
+       await apiRequest('/auth/username', {
+         method: 'POST',
+         body: JSON.stringify({ username })
+       });
+       navigate('/home');
+     } catch (error) {
+       setError(error.message);
+     }
+   };
+   
+   return (
+     <form onSubmit={handleSubmit}>
+       <h2>Welcome! Choose a username</h2>
+       <input 
+         type="text" 
+         value={username} 
+         onChange={(e) => setUsername(e.target.value)}
+         placeholder="Username (letters, numbers, dots, underscores)"
+         pattern="^[a-zA-Z0-9._]+$"
+         minLength="3"
+         maxLength="30"
+         required
+       />
+       {error && <p className="error">{error}</p>}
+       <button type="submit">Continue</button>
+     </form>
+   );
+   ```
+
+## Friend System
+
+1. **Search for Friends**
+   ```jsx
+   const [searchQuery, setSearchQuery] = useState('');
+   const [searchResults, setSearchResults] = useState([]);
+   
+   const searchUsers = async () => {
+     if (!searchQuery.trim()) return;
+     
+     try {
+       const results = await apiRequest(`/friends/search?query=${encodeURIComponent(searchQuery)}`);
+       setSearchResults(results);
+     } catch (error) {
+       console.error('Failed to search users:', error);
+     }
+   };
+   
+   return (
+     <div>
+       <input
+         type="text"
+         value={searchQuery}
+         onChange={(e) => setSearchQuery(e.target.value)}
+         placeholder="Search by username or display name"
+       />
+       <button onClick={searchUsers}>Search</button>
+       
+       <div className="search-results">
+         {searchResults.map(user => (
+           <UserCard 
+             key={user._id}
+             user={user}
+             onSendRequest={() => sendFriendRequest(user._id)}
+           />
+         ))}
+       </div>
+     </div>
+   );
+   ```
+
+2. **Send Friend Request**
+   ```javascript
+   const sendFriendRequest = async (userId) => {
+     try {
+       await apiRequest('/friends/request', {
+         method: 'POST',
+         body: JSON.stringify({ receiverId: userId })
+       });
+       // Update UI to show request sent
+     } catch (error) {
+       console.error('Failed to send friend request:', error);
+     }
+   };
+   
+   // Or send by username
+   const sendFriendRequestByUsername = async (username) => {
+     try {
+       await apiRequest('/friends/request', {
+         method: 'POST',
+         body: JSON.stringify({ username })
+       });
+       // Update UI to show request sent
+     } catch (error) {
+       console.error('Failed to send friend request:', error);
+     }
+   };
+   ```
+
+3. **Get Friend Requests**
+   ```javascript
+   const [requests, setRequests] = useState({ incoming: [], outgoing: [] });
+   
+   const getFriendRequests = async () => {
+     try {
+       const data = await apiRequest('/friends/requests');
+       setRequests(data);
+     } catch (error) {
+       console.error('Failed to get friend requests:', error);
+     }
+   };
+   ```
+
+4. **Accept/Reject Friend Request**
+   ```javascript
+   const acceptRequest = async (requestId) => {
+     try {
+       await apiRequest(`/friends/request/${requestId}/accept`, {
+         method: 'PUT'
+       });
+       // Refresh friend requests
+       getFriendRequests();
+     } catch (error) {
+       console.error('Failed to accept friend request:', error);
+     }
+   };
+   
+   const rejectRequest = async (requestId) => {
+     try {
+       await apiRequest(`/friends/request/${requestId}/reject`, {
+         method: 'PUT'
+       });
+       // Refresh friend requests
+       getFriendRequests();
+     } catch (error) {
+       console.error('Failed to reject friend request:', error);
+     }
+   };
+   ```
+
+5. **Get Friends List**
+   ```javascript
+   const [friends, setFriends] = useState([]);
+   
+   const getFriends = async () => {
+     try {
+       const data = await apiRequest('/friends');
+       setFriends(data);
+     } catch (error) {
+       console.error('Failed to get friends:', error);
+     }
+   };
+   ```
+
+## Chat System
+
+1. **Initialize Socket Connection**
+   ```javascript
+   import { io } from 'socket.io-client';
+   
+   let socket;
+   
+   const initializeSocket = () => {
+     const token = localStorage.getItem('token');
+     
+     socket = io('http://localhost:3001', {
+       auth: { token }
+     });
+     
+     socket.on('connect', () => {
+       console.log('Connected to socket server');
+     });
+     
+     socket.on('error', (error) => {
+       console.error('Socket error:', error);
+     });
+     
+     // Set up event listeners
+     socket.on('new_message', handleNewMessage);
+     socket.on('message_delivered', handleMessageDelivered);
+     socket.on('message_read', handleMessageRead);
+     socket.on('user_typing', handleUserTyping);
+     socket.on('user_stopped_typing', handleUserStoppedTyping);
+     socket.on('user_offline', handleUserOffline);
+   };
+   ```
+
+2. **Get User's Conversations**
+   ```javascript
+   const [conversations, setConversations] = useState([]);
+   
+   const getConversations = async () => {
+     try {
+       const data = await apiRequest('/chat');
+       setConversations(data);
+     } catch (error) {
+       console.error('Failed to get conversations:', error);
+     }
+   };
+   ```
+
+3. **Start a New Conversation**
+   ```javascript
+   const startConversation = async (userId) => {
+     try {
+       const conversation = await apiRequest('/chat/chat', {
+         method: 'POST',
+         body: JSON.stringify({ participantId: userId })
+       });
+       
+       return conversation;
+     } catch (error) {
+       console.error('Failed to start conversation:', error);
+     }
+   };
+   ```
+
+4. **Get Messages for a Conversation**
+   ```javascript
+   const [messages, setMessages] = useState([]);
+   
+   const getMessages = async (conversationId) => {
+     try {
+       const data = await apiRequest(`/chat/chat/${conversationId}/messages`);
+       setMessages(data);
+     } catch (error) {
+       console.error('Failed to get messages:', error);
+     }
+   };
+   ```
+
+5. **Send a Message**
+   ```javascript
+   const sendMessage = (conversationId, content) => {
+     socket.emit('send_message', {
+       conversationId,
+       content,
+       messageType: 'text'
+     });
+   };
+   ```
+
+6. **Handle Incoming Messages**
+   ```javascript
+   const handleNewMessage = (message) => {
+     setMessages(prevMessages => [...prevMessages, message]);
+   };
+   ```
+
+7. **Mark Messages as Read**
+   ```javascript
+   const markMessageAsRead = (messageId) => {
+     socket.emit('mark_read', { messageId });
+   };
+   
+   // Mark all messages in a conversation as read
+   const markConversationAsRead = async (conversationId) => {
+     try {
+       await apiRequest(`/chat/chat/${conversationId}/read`, {
+         method: 'PATCH'
+       });
+     } catch (error) {
+       console.error('Failed to mark conversation as read:', error);
+     }
+   };
+   ```
+
+8. **Typing Indicators**
+   ```javascript
+   const startTyping = (conversationId) => {
+     socket.emit('typing_start', { conversationId });
+   };
+   
+   const stopTyping = (conversationId) => {
+     socket.emit('typing_stop', { conversationId });
+   };
+   
+   // Use with a debounce function
+   const handleInput = (e, conversationId) => {
+     if (!isTyping) {
+       setIsTyping(true);
+       startTyping(conversationId);
+     }
+     
+     // Reset the debounce timer
+     clearTimeout(typingTimeout);
+     typingTimeout = setTimeout(() => {
+       setIsTyping(false);
+       stopTyping(conversationId);
+     }, 2000);
+   };
+   ```
+
+## Important Considerations
+
+1. **Authentication Checks**
+   - Add authentication check on protected routes
+   - Redirect to login if token is missing or expired
+
+2. **Message Caching**
+   - Store messages in local state to reduce API calls
+   - Implement pagination for loading older messages
+
+3. **Online Status**
+   - Display online/offline status for friends
+   - Show last seen time for offline friends
+
+4. **Error Handling**
+   - Implement proper error handling for API requests
+   - Show appropriate error messages to the user
+
+5. **User Experience**
+   - Add loading states for API calls
+   - Provide feedback for friend requests, messages sent, etc.
+
+6. **Security**
+   - Store tokens securely
+   - Implement token refresh logic
+   - Sanitize user inputs before sending to the server 

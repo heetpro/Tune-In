@@ -32,7 +32,7 @@ The application uses Spotify OAuth for authentication. Here's the complete flow:
 
 6. **Redirection to Frontend**
    - Backend redirects to frontend with tokens as URL parameters
-   - Redirect URL: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/success?token=${token}&refresh=${refreshToken}`
+   - Redirect URL: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/success?token=${token}&refresh=${refreshToken}`
 
 7. **Frontend Token Management**
    - Frontend extracts tokens from URL parameters
@@ -58,6 +58,16 @@ const UserSchema = new Schema<IUser>({
         type: String,
         required: true,
         unique: true,
+    },
+    username: {
+        type: String,
+        unique: true,
+        sparse: true, // Allows multiple null values
+        trim: true,
+        lowercase: true,
+        minlength: 3,
+        maxlength: 30,
+        match: [/^[a-z0-9._]+$/, 'Username can only contain letters, numbers, dots, and underscores'],
     },
     displayName: {
         type: String,
@@ -183,6 +193,10 @@ const UserSchema = new Schema<IUser>({
     isAdmin: {
         type: Boolean,
         default: false,
+    },
+    hasCompletedOnboarding: {
+        type: Boolean,
+        default: false,
     }
 });
 
@@ -190,6 +204,7 @@ const UserSchema = new Schema<IUser>({
 interface IUser extends Document {
     _id: string;
     spotifyId: string;
+    username?: string;
     displayName: string;
     firstName: string;
     lastName?: string;
@@ -234,6 +249,7 @@ interface IUser extends Document {
     banReason?: string;
     banExpiresAt?: Date;
     isAdmin?: boolean;
+    hasCompletedOnboarding: boolean;
 }
 ```
 
@@ -406,3 +422,53 @@ The application includes a real-time chat system using Socket.io with the follow
    - `user_stopped_typing`: When another user stops typing
    - `user_offline`: When another user goes offline
    - `error`: When an error occurs 
+
+## Username System
+
+The application includes a username system to make it easier for users to find and connect with each other.
+
+### Onboarding Process
+
+1. **Initial Login**
+   - When a user logs in for the first time, they don't have a username
+   - The callback response includes a `needsUsername` parameter
+   - The frontend should redirect to an onboarding page if `needsUsername` is true
+
+2. **Setting Username**
+   - `POST /api/auth/username`
+   - Body: `{ "username": "desired_username" }`
+   - Usernames must:
+     - Be 3-30 characters long
+     - Contain only letters, numbers, dots, and underscores
+     - Be unique across all users
+     - Be lowercase (automatically converted)
+
+3. **Checking Onboarding Status**
+   - `GET /api/auth/onboarding`
+   - Returns: 
+     ```json
+     {
+       "hasCompletedOnboarding": true/false,
+       "hasUsername": true/false,
+       "username": "user_username"
+     }
+     ```
+
+### Friend System with Username
+
+The friend system has been updated to work with usernames:
+
+1. **Searching Users**
+   - `GET /api/friends/search?query=username`
+   - Search by username or display name
+   - Returns users with their friendship status relative to the current user:
+     - "friends": Already friends
+     - "request-sent": Current user has sent a request
+     - "request-received": Current user has received a request
+     - "none": No relationship
+
+2. **Sending Friend Requests**
+   - `POST /api/friends/request`
+   - Body with ID: `{ "receiverId": "user_id" }`
+   - Body with username: `{ "username": "target_username" }`
+   - Allows finding users by username instead of requiring their ID 
