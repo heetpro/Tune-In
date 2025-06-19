@@ -169,9 +169,25 @@ export interface IAudioFeatures {
     acousticness: number;
     instrumentalness: number;
     liveness: number;
-    valence: number;
+    valence: number
+    duration: number;
     tempo: number;
     timeSignature: number;
+}
+
+export interface IRecentlyPlayedTrack {
+    track: ITrack;
+    playedAt: string;              
+    context?: {
+        type: 'album' | 'artist' | 'playlist' | 'show';
+        href: string;
+        externalUrls: { spotify: string };
+        uri: string;
+    };
+}
+
+export interface IMusicProfile {
+    recentlyPlayed: IRecentlyPlayedTrack[];  
 }
 
 export interface IGenre {
