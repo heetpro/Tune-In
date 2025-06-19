@@ -12,10 +12,9 @@ export interface IUser extends Document {
     age: number;
     gender: 'male' | 'female' | 'non-binary' | 'other';
     intrestedIn: ('male' | 'female' | 'non-binary' | 'other')[];
-    location: {
-        city: string;
-        country: string;
-    };
+    city: string;
+    spotifyFollowers: number;
+    country: string;
     isActive: boolean;
     isOnline: boolean;
     lastSeen: Date;
@@ -100,7 +99,7 @@ export interface ITrack {
     name: string;
     artists: IArtist[];
     album: IAlbum;
-    duration: number;
+    duration: number;   
     popularity: number;
     explicit: boolean;
     previewUrl?: string;
@@ -108,8 +107,10 @@ export interface ITrack {
         spotify: string;
     };
     audioFeatures?: IAudioFeatures;
-    playCount?: number;
-    lastPlayedAt?: Date;
+
+    // features that i forget to add
+
+    href: string;    
 
 }
 
@@ -119,7 +120,6 @@ export interface IArtist {
     name: string;
     genres: string[];
     popularity: number;
-    followers: number;
     images: ISpotifyImage[];
     externalUrl: {
         spotify: string;
@@ -128,12 +128,13 @@ export interface IArtist {
 
 export interface IAlbum {
     spotifyId: string;
+    albumType: 'album' | 'single' | 'compilation';
+    genres: string[];
     name: string;
     artists: IArtist[];
     images: ISpotifyImage[];
     releaseDate: Date;
     totalTracks: number;
-    popularity: number;
     externalUrl: {
         spotify: string;
     };
@@ -149,9 +150,9 @@ export interface IPlaylist {
         spotifyId: string;
         displayName: string;
     };
-    tracks: ITrack[];
+    // tracks: ITrack[];
     images: ISpotifyImage[];
-    followerCount: number;
+    // followerCount: number;
     externalUrl: {
         spotify: string;
     };
