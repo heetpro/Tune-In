@@ -65,14 +65,13 @@ export class spotifyService {
 
   async getUserProfile(accessToken: string): Promise<any> {
     try {
-      const api = new SpeedcastApi();
-      const response = await api.get('https://api.spotify.com/v1/me', {
+      const response = await axios.get('https://api.spotify.com/v1/me', {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
 
-      return response.data.data;
+      return response.data;
     } catch (error: any) {
       console.error('Spotify profile error:', error.response?.data || error.message);
       throw new Error('Failed to get user profile from Spotify');

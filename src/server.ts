@@ -6,10 +6,8 @@ import compression from 'compression';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 
-import { SocketHandler } from './handlers/socketHandler';
 
 import authRoutes from './router/auth';
-import chatRoutes from './router/chat';
 import friendRoutes from './router/friend';
 import { rateLimiter } from './middleware/rateLimiter';
 import connectDB from './lib/database';
@@ -33,14 +31,14 @@ app.use(rateLimiter);
 // app.use(slowDownMiddleware);
 
 app.use('/api/auth', authRoutes);
-app.use('/api/chat', chatRoutes);
+// app.use('/api/chat', chatRoutes);
 app.use('/api/friends', friendRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-const socketHandler = new SocketHandler(server);
+// Initialize WebSocket handler
 
 app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Error:', error);
@@ -51,19 +49,19 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
+const WEBSOCKET_PORT = process.env.WEBSOCKET_PORT || '3002';
 
 const startServer = async () => {
   try {
     await connectDB();
     
+    // Start HTTP server
     server.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
+      console.log(`HTTP Server running on port ${PORT}`);
+      console.log(`WebSocket Server running on port ${WEBSOCKET_PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
       console.log(`Spotify redirect URI: ${process.env.SPOTIFY_REDIRECT_URI}`);
-      console.log(`Auth routes are mounted at: /auth`);
-      console.log(`Login URL: /auth/spotify/login`);
-      console.log(`Callback URL: /auth/spotify/callback`);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

@@ -485,4 +485,57 @@ export interface IAnalytics {
     expiresAt: Date;
     
     createdAt: Date;
-  } 
+  }
+
+// Add WebSocket related types
+
+export interface TypingUser {
+  userId: string;
+  displayName: string;
+  timestamp: number;
+}
+
+export interface WebSocketMessage {
+  type: string;
+  payload: any;
+}
+
+export interface WebSocketEvent<T = any> {
+  type: string;
+  payload: T;
+}
+
+export interface MessagePayload {
+  conversationId: string;
+  content: string;
+  messageType?: 'text' | 'image' | 'file' | 'spotify_track';
+  spotifyData?: SpotifyData;
+}
+
+export interface SpotifyData {
+  type: 'track' | 'playlist' | 'album';
+  id: string;
+  name: string;
+  artist?: string;
+  image?: string;
+  previewUrl?: string;
+}
+
+export interface MessageReadPayload {
+  messageId: string;
+  conversationId: string;
+}
+
+export interface TypingPayload {
+  conversationId: string;
+}
+
+export interface ConversationCreatePayload {
+  participantIds: string[];
+}
+
+export interface WebSocketData {
+  token: string;
+  userData?: any;
+  conversations?: string[];
+} 
