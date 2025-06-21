@@ -5,19 +5,18 @@ import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-import { Server } from 'socket.io';
 
-import authRoutes from './router/auth';
-import friendRoutes from './router/friend';
 import { rateLimiter } from './middleware/rateLimiter';
 import connectDB from './lib/database';
+import router from "./router/router";
+import SocketClient from './lib/socket';
 
 dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io =  new Server(server, {
-  
+const io =  new SocketClient(server, {
+
 })
 
 app.use(helmet());
@@ -33,9 +32,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(rateLimiter);
 // app.use(slowDownMiddleware);
 
-app.use('/api/auth', authRoutes);
-// app.use('/api/chat', chatRoutes);
-app.use('/api/friends', friendRoutes);
+app.use(router);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
