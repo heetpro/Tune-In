@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-
+import { Server } from 'socket.io';
 
 import authRoutes from './router/auth';
 import friendRoutes from './router/friend';
@@ -16,6 +16,12 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+    credentials: true
+  }
+});
 
 app.use(helmet());
 app.use(compression());
