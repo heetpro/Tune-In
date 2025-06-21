@@ -28,6 +28,9 @@ router.get('/profile/me', authenticate, asyncHandler(getProfile));
 router.post('/username', authenticate, asyncHandler(setUsername));
 router.get('/onboarding', authenticate, asyncHandler(checkOnboarding));
 
+router.get('/health', (req, res) => {
+    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
 
 
 router.get('/', authenticate, asyncHandler(getFriends));
