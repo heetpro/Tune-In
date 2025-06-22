@@ -1,0 +1,207 @@
+# FRONTEND INTEGRATION GUIDE
+
+## AUTHENTICATION
+
+### JWT Authentication
+- Token required in Authorization header for all protected routes
+- Format: "Bearer {token}"
+- Token obtained after Spotify OAuth flow
+
+### Spotify Authentication
+- GET /auth/spotify - Initiate Spotify OAuth flow
+- GET /auth/callback - Spotify OAuth callback
+  - Output: { token: "jwt-token", user: { ... } }
+
+## SPOTIFY INTEGRATION
+
+### Music Profile
+- User music profiles are automatically synced from Spotify
+- Music data includes:
+  - Top artists (short, medium, and long term)
+  - Top tracks (short, medium, and long term)
+  - Recently played tracks
+  - Top genres
+  - Audio preferences (danceability, energy, etc.)
+  - Current playing track (when available)
+
+### Matching Algorithm
+- Users are matched based on musical compatibility
+- Compatibility score calculated from:
+  - Shared artists
+  - Genre overlap
+  - Audio feature preferences
+  - Playlist similarity
+
+### Music Sharing
+- Users can share tracks directly from Spotify
+- Shared tracks appear in conversation
+- Shared tracks can be played in-app via Spotify Web Playback SDK
+
+## WEBSOCKET EVENTS
+
+### Connection
+- Connect to socket server with authentication token
+- Socket.IO adapter used for real-time communication
+
+### Client to Server Events
+1. join_conversation
+   - Input: { conversationId: string }
+   - Output: None
+   
+2. leave_conversation
+   - Input: { conversationId: string }
+   - Output: None
+   
+3. new_message
+   - Input: { 
+       conversationId: string,
+       content: string,
+       messageType?: 'text'|'spotify_track',
+       spotifyData?: {
+         type: 'track'|'playlist'|'album',
+         id: string,
+         name: string,
+         artist?: string,
+         image?: string
+       }
+     }
+   - Output: None (server broadcasts to all participants)
+   
+4. read_message
+   - Input: { messageId: string, conversationId: string }
+   - Output: None (server broadcasts to all participants)
+   
+5. typing_start/typing_stop
+   - Input: { conversationId: string }
+   - Output: None (server broadcasts to all participants)
+
+### Server to Client Events
+1. connected
+   - Payload: { userId: string }
+   
+2. conversations
+   - Payload: Array of user conversations
+   
+3. new_message
+   - Payload: Complete message object
+   
+4. message_delivered
+   - Payload: { messageId: string, deliveredAt: Date }
+   
+5. message_read
+   - Payload: { messageId: string, readAt: Date, readBy: string }
+   
+6. user_typing/user_stop_typing
+   - Payload: { userId: string, conversationId: string }
+   
+7. user_online/user_offline
+   - Payload: { userId: string, timestamp: Date }
+
+## REST API ENDPOINTS
+
+### Profile
+1. GET /api/profile
+   - Input: Authorization header with token
+   - Output: User profile data including music preferences
+   
+2. POST /api/setUsername
+   - Input: { username: string }
+   - Output: { success: true, message: "Username updated" }
+
+### Friends
+1. GET /api/friends
+   - Input: None
+   - Output: List of friends with online status
+   
+2. POST /api/friendRequest
+   - Input: { receiverId: string }
+   - Output: { success: true }
+   
+3. GET /api/friendRequests
+   - Input: None
+   - Output: { incoming: [...], outgoing: [...] }
+   
+4. POST /api/acceptFriendRequest
+   - Input: { requestId: string }
+   - Output: { success: true }
+   
+5. POST /api/rejectFriendRequest
+   - Input: { requestId: string }
+   - Output: { success: true }
+   
+6. POST /api/removeFriend
+   - Input: { friendId: string }
+   - Output: { success: true }
+
+### Chat
+1. GET /api/chats
+   - Input: None
+   - Output: List of conversations with last message
+   
+2. GET /api/chat/:id
+   - Input: conversationId as URL parameter
+   - Output: Single conversation with messages
+   
+3. GET /api/messages/:conversationId
+   - Input: conversationId as URL parameter, query params for pagination
+   - Output: List of messages with pagination info
+
+### User Search
+1. GET /api/users/search
+   - Input: query parameter ?query=text
+   - Output: List of matching users
+
+### Onboarding
+1. GET /api/checkOnboarding
+   - Input: None
+   - Output: { hasCompletedOnboarding: boolean }
+
+## DATA MODELS
+
+### User
+- _id: string
+- spotifyId: string
+- username?: string
+- displayName: string
+- profilePicture: string
+- bio: string
+- age: number
+- gender: string
+- interestedIn: string[]
+- musicProfile: object with music preferences
+- isOnline: boolean
+- lastSeen: Date
+
+### MusicProfile
+- spotifyConnected: boolean
+- currentlyPlaying?: CurrentTrack
+- recentTracks: Track[]
+- topArtists: { short_term: Artist[], medium_term: Artist[], long_term: Artist[] }
+- topTracks: { short_term: Track[], medium_term: Track[], long_term: Track[] }
+- topGenres: Genre[]
+- audioFeatures: AudioFeatures
+- playlists: Playlist[]
+
+### Message
+- _id: string
+- conversationId: string
+- senderId: string
+- content: string
+- messageType: 'text' | 'spotify_track' | 'system'
+- sharedContent?: object with Spotify data
+- isRead: boolean
+- readAt?: Date
+- sentAt: Date
+
+### Conversation
+- _id: string
+- participants: string[]
+- lastMessage?: Message
+- lastActivity: Date
+- isActive: boolean
+
+## ERROR HANDLING
+- All endpoints return standard error format:
+  { success: false, message: "Error message", error?: details }
+- HTTP status codes follow standard conventions (200, 400, 401, 403, 404, 500)
+- Socket errors emitted as 'error' event with message object 

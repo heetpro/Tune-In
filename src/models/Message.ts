@@ -2,11 +2,11 @@ import type { IMessage } from "@/types";
 import mongoose, { Schema } from "mongoose";
 
 const MessageSchema = new Schema<IMessage>({
-    conversationId: {
+    senderId: {
         type: String,
         required: true,
     },
-    senderId: {
+    receiverId: {
         type: String,
         required: true,
     },

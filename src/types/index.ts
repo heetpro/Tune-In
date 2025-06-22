@@ -1,4 +1,14 @@
 import { Document } from "mongoose";
+import type { Socket } from "socket.io";
+
+export interface CustomSocket extends Socket {
+  userInfo?: {
+    id: string;
+    role: "admin" | "listener" | string;
+  }; // Optional property
+  roomInfo?: { roomId: string; _id: string; progress: number }; // Optional property
+}
+
 
 export interface IUser extends Document {
     _id: string;
@@ -260,7 +270,7 @@ export interface IConversation {
 
 export interface IMessage {
     _id: string;
-    conversationId: string;
+    receiverId: string;
     senderId: string;
 
     content: string;

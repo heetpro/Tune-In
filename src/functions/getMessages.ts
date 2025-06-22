@@ -4,7 +4,7 @@ import type { Response } from "express";
 
 export const getMessages = async (req: AuthRequest, res: Response) => {
     try {
-        const { conversationId } = req.params;
+        const {  } = req.params;
         const { page = 1, limit = 50 } = req.query;
         const messages = await Message.find({
             conversationId,

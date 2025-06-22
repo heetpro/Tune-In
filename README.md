@@ -5,6 +5,10 @@ To install dependencies:
 ```bash
 bun install
 ```
+    // "dev": "bun run --watch src/server.ts",
+    // "build": "tsc",
+    // "start": "bun run dist/server.js",
+    // "lint": "eslint src/**/*.ts"
 
 To run:
 
