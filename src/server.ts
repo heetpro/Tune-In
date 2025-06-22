@@ -43,6 +43,30 @@ redisClient.connect().then(() => {
     }
   });
 
+    export const getReceiverSocketId = (userId: string) => {
+    return userSocketMap.get(userId);
+  }
+
+  // to track online freaks.
+  const userSocketMap = new Map<string, string>();
+
+  io.on('connection', (socket) => {
+    console.log('a user connected', socket.id);
+
+    const userId = socket.handshake.query.userId as string;
+    if (userId) {
+      userSocketMap.set(userId, socket.id);
+    }
+
+    io.emit('getOnlineUsers', Array.from(userSocketMap.keys()));
+
+    socket.on('disconnect', () => {
+      console.log('a user disconnected', socket.id);
+      userSocketMap.delete(userId);
+      io.emit('getOnlineUsers', Array.from(userSocketMap.keys()));
+    });
+  });
+
   // setSocketListeners(io);
 });
 
