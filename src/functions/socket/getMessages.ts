@@ -25,9 +25,7 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
         });
         
         if (!isFriend && !matchExists) {
-            return res.status(403).json({ 
-                error: 'You can only chat with your friends or accepted matches' 
-            });
+            throw new Error('You can only chat with your friends or accepted matches');
         }
         
         const messages = await Message.find({
