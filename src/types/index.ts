@@ -272,9 +272,8 @@ export interface IMessage {
     _id: string;
     receiverId: string;
     senderId: string;
-
-    content: string;
-    messageType: 'text' | 'playlist' | 'system';
+    text?: string;
+    image?: string;
 
     sharedContent?: {
         type: 'track' | 'playlist';
@@ -286,9 +285,6 @@ export interface IMessage {
     readAt?: Date;
     isDelivered: boolean;
     deliveredAt?: Date;
-    
-    sentAt: Date;
-    editedAt?: Date;
     deletedAt?: Date;
     isDeleted: boolean;
     

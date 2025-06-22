@@ -11,13 +11,11 @@ const MessageSchema = new Schema<IMessage>({
         type: String,
         required: true,
     },
-    content: {
+    text: {
         type: String,
-        required: true,
     },
-    messageType: {
+    image: {
         type: String,
-        required: true,
     },
     sharedContent: {
         type: Schema.Types.Mixed,
@@ -36,14 +34,6 @@ const MessageSchema = new Schema<IMessage>({
         required: true,
     },
     deliveredAt: {
-        type: Date,
-        required: false,
-    },
-    sentAt: {
-        type: Date,
-        required: true,
-    },
-    editedAt: {
         type: Date,
         required: false,
     },

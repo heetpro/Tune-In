@@ -17,6 +17,7 @@ import { searchUsers } from "@/functions/searchUsers";
 import { getLogout } from "@/functions/getLogout";
 import { getMessages } from "@/functions/socket/getMessages";
 import { getUsersToChat } from "@/functions/socket/getUsersToChat";
+import { sendMessage } from "@/functions/socket/sendMessage";
 
 const router = Router();
 const spotify = new spotifyService();
@@ -33,6 +34,9 @@ router.get('/onboarding', authenticate, asyncHandler(checkOnboarding));
 
 router.get('/messages/users', authenticate, asyncHandler(getUsersToChat));
 router.get('/messages/:id', authenticate, asyncHandler(getMessages));
+
+router.post('/messages/send/:id', authenticate, asyncHandler(sendMessage));
+
 
 router.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
