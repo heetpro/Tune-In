@@ -25,8 +25,6 @@ export interface IUser extends Document {
     city: string;
     spotifyFollowers: number;
     country: string;
-    isActive: boolean; //from spotify
-    isOnline: boolean;
     lastSeen: Date;
     createdAt: Date;
     updatedAt: Date;

@@ -47,21 +47,11 @@ export const UserSchema = new Schema<IUser>({
     intrestedIn: {
         type: [String],
     },
-    location: {
-        city: {
-            type: String,
-        },
-        country: {
-            type: String,
-        },
+    city: {
+        type: String,
     },
-    isActive: {
-        type: Boolean,
-        default: false,
-    },
-    isOnline: {
-        type: Boolean,
-        default: false,
+    country: {
+        type: String,
     },
     lastSeen: {
         type: Date,

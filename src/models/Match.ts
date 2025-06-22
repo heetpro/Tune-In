@@ -34,10 +34,6 @@ const MatchSchema = new Schema<IMatch>({
         type: Date,
         required: true,
     },
-    becameMutualAt: {
-        type: Date,
-        required: false,
-    },
 });
 
 export default mongoose.model<IMatch>("Match", MatchSchema);

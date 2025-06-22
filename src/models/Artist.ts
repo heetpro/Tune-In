@@ -18,9 +18,6 @@ const ArtistSchema = new Schema<IArtist>({
     popularity: {
         type: Number,
     },
-    followers: {
-        type: Number,
-    },
     images: {
         type: Schema.Types.Mixed,
     },

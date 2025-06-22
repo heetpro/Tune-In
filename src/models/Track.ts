@@ -40,13 +40,7 @@ export const TrackSchema = new Schema<ITrack>({
     audioFeatures: {
         type: Schema.Types.Mixed,
     },
-    playCount: {
-        type: Number,
-        default: 0,
-    },
-    lastPlayedAt: {
-        type: Date,
-    },
+
 })
 
 export const Track = mongoose.model<ITrack>("Track", TrackSchema);

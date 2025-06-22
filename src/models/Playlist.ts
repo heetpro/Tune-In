@@ -34,18 +34,9 @@ const PlaylistSchema = new Schema<IPlaylist>({
             required: true,
         },
     },
-    tracks: {
-        type: Schema.Types.Mixed,
-        required: true,
-        ref: "Track",
-    },
     images: {
         type: Schema.Types.Mixed,
         ref: "SpotifyImage",
-    },
-    followerCount: {
-        type: Number,
-        required: true,
     },
     externalUrl: {
         spotify: {

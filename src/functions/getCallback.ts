@@ -47,7 +47,6 @@ export const getCallback = async (req: Request, res: Response) => {
                 await user.save();
             } else {
                 // Update existing user
-                user.isOnline = true;
                 user.lastSeen = new Date();
                 await user.save();
             }
