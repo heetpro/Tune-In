@@ -281,12 +281,12 @@ export interface IMessage {
         data: ITrack | IPlaylist;
     };
 
-    isRead: boolean;
+    isRead?: boolean;
     readAt?: Date;
-    isDelivered: boolean;
+    isDelivered?: boolean;
     deliveredAt?: Date;
     deletedAt?: Date;
-    isDeleted: boolean;
+    isDeleted?: boolean;
     
 }
 

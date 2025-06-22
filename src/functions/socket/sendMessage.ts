@@ -1,5 +1,7 @@
+import cloudinary from "@/lib/cloudnary";
 import type { AuthRequest } from "@/middleware/auth";
-import cloudinary from "@/lib/cloudinary";
+import Message from "@/models/Message";
+import type { Response } from "express";
 
 export const sendMessage = async (req: AuthRequest, res: Response) => {
     try {
@@ -9,14 +11,23 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
         
         let imageUrl = null;
         if (image) {
-            const imageUrl = await cloudinary.uploader.upload(image, {
-                resource_type: 'image',
-                folder: 'messages',
-            });
+            const uploadUri = await cloudinary.uploader.upload(image);
+            imageUrl = uploadUri.secure_url;
         }
         
+        const newMessage = new Message({
+            senderId,
+            receiverId,
+            text,
+            image: imageUrl,
+        });
+        await newMessage.save();
+
+
+        res.status(201).json(newMessage);
 
     } catch (error) {
-        
+        console.error('Error sending message:', error);
+        res.status(500).json({ error: 'Failed to send message' });
     }
 }
