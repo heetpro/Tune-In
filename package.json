@@ -43,6 +43,7 @@
     "morgan": "^1.10.0",
     "node-fetch": "^3.3.2",
     "redis": "^5.5.6",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "speedcast-api": "^1.0.0"
   }
 }

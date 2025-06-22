@@ -53,7 +53,7 @@ export const getCallback = async (req: Request, res: Response) => {
             }
 
             // Generate tokens
-            const token = generateToken({ id: user._id, spotifyId: user.spotifyId });
+            const token = generateToken({ id: user._id, spotifyId: user.spotifyId }, res);
             const refreshToken = generateRefreshToken({ id: user._id });
 
             // Check if user has a username set

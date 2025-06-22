@@ -15,6 +15,8 @@ import { getFriendRequests } from "@/functions/getFriendRequests";
 import { removeFriend } from "@/functions/removeFriend";
 import { searchUsers } from "@/functions/searchUsers";
 import { getLogout } from "@/functions/getLogout";
+import { getMessages } from "@/functions/socket/getMessages";
+import { getUsersToChat } from "@/functions/socket/getUsersToChat";
 
 const router = Router();
 const spotify = new spotifyService();
@@ -29,8 +31,8 @@ router.get('/profile/me', authenticate, asyncHandler(getProfile));
 router.post('/username', authenticate, asyncHandler(setUsername));
 router.get('/onboarding', authenticate, asyncHandler(checkOnboarding));
 
-// socket routes
-
+router.get('/messages/users', authenticate, asyncHandler(getUsersToChat));
+router.get('/messages/:id', authenticate, asyncHandler(getMessages));
 
 router.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
