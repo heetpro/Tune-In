@@ -25,7 +25,7 @@ export interface IUser extends Document {
     city: string;
     spotifyFollowers: number;
     country: string;
-    isActive: boolean;
+    isActive: boolean; //from spotify
     isOnline: boolean;
     lastSeen: Date;
     createdAt: Date;
@@ -51,13 +51,14 @@ export interface IUser extends Document {
         newMatches: boolean;
         newFriendRequests: boolean;
     };
+
+    hasCompletedOnboarding: boolean;
     isPremium: boolean;
     isVerified: boolean;
-    isBanned: boolean;
+    isBanned: boolean; //from spotify
     banReason?: string;
     banExpiresAt?: Date;
-    isAdmin?: boolean;
-    hasCompletedOnboarding: boolean;
+    isAdmin?: boolean; //from spotify
 }
 
 // Add FriendRequest interface
@@ -231,7 +232,6 @@ export interface IMatch {
 
     createdAt: Date;
     expiresAt: Date;
-    becameMutualAt?: Date;
 }
 
 export interface IMatchCompatibility {
