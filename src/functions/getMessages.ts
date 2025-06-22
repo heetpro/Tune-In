@@ -4,18 +4,20 @@ import type { Response } from "express";
 
 export const getMessages = async (req: AuthRequest, res: Response) => {
     try {
-        const {  } = req.params;
+        const { id: userToChatId } = req.params;
+        const senderId = req.user._id;
         const { page = 1, limit = 50 } = req.query;
         const messages = await Message.find({
-            conversationId,
-            isDeleted: false
+            $or: [
+                { senderId, receiverId: userToChatId },
+                { senderId: userToChatId, receiverId: senderId }
+            ],
+            // isDeleted: false
           })
           .sort({ sentAt: -1 })
-          .limit(parseInt(limit as string))
-          .skip((parseInt(page as string) - 1) * parseInt(limit as string))
-          .populate('senderId', 'displayName profilePicture');
       
-          res.json(messages.reverse());
+          res.status(200).json(messages);
+          
         } catch (error) {
           res.status(500).json({ error: 'Failed to get messages' });
         }

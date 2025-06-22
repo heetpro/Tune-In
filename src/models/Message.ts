@@ -4,6 +4,7 @@ import mongoose, { Schema } from "mongoose";
 const MessageSchema = new Schema<IMessage>({
     senderId: {
         type: String,
+        ref: 'User',
         required: true,
     },
     receiverId: {
