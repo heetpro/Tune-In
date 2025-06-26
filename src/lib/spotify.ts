@@ -29,14 +29,27 @@ export class spotifyService {
       'user-read-currently-playing',
       'user-read-playback-state'
     ].join(' ');
+
+
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: this.clientId,
       scope: scopes,
       redirect_uri: this.redirectUri,
-      state: Math.random().toString(36).substring(7)
     });
+
     return `https://accounts.spotify.com/authorize?${params}`;
+  }
+
+  async refreshAccessToken(refreshToken: string): Promise<any> {
+    const response = await axios.post('https://accounts.spotify.com/api/token', {
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+    });
+    
+    return response.data;
   }
 
 
