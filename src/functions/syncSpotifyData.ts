@@ -160,7 +160,7 @@ export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
 
         console.log('Spotify data sync completed successfully:', syncResults);
 
-        res.status(200).json({ 
+        return res.status(200).json({ 
             message: "Spotify data synced successfully",
             syncResults 
         });
@@ -173,6 +173,6 @@ export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
             return res.status(401).json({ error: 'Spotify token expired' });
         }
         
-        res.status(500).json({ error: "Failed to sync Spotify data" });
+        return res.status(500).json({ error: "Failed to sync Spotify data" });
     }
 }
