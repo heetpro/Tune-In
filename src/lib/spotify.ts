@@ -1,4 +1,4 @@
-import type { IArtist, IPlaylist, IRecentlyPlayedTrack, ITrack } from "@/types";
+import type { IArtist, ICurrentTrack, IPlaylist, IRecentlyPlayedTrack, ITrack } from "@/types";
 import axios from "axios";
 import querystring from 'querystring';
 import SpeedcastApi from "speedcast-api";
@@ -189,6 +189,25 @@ export class spotifyService {
         uri: item.context.uri,
       } : undefined,
     }));
+  }
+
+  async getCurrentTrack(accessToken: string): Promise<ICurrentTrack | null> {
+    try {
+      const data = await this.makeSpotifyRequest('/me/player/currently-playing', accessToken);
+      
+      if (!data || !data.item) {
+        return null;
+      }
+
+      return {
+        ...this.formatTrack(data.item),
+        isPlaying: data.is_playing,
+        progressMs: data.progress_ms,
+        timestamp: new Date(),
+      };
+    } catch (error) {
+      return null;
+    }
   }
 
   
