@@ -1,4 +1,4 @@
-import type { IArtist, IPlaylist, ITrack } from "@/types";
+import type { IArtist, IPlaylist, IRecentlyPlayedTrack, ITrack } from "@/types";
 import axios from "axios";
 import querystring from 'querystring';
 import SpeedcastApi from "speedcast-api";
@@ -173,6 +173,25 @@ export class spotifyService {
     }));
   }
 
+
+  async getRecentlyPlayed(accessToken: string, limit: number = 50): Promise<IRecentlyPlayedTrack[]> {
+    const data = await this.makeSpotifyRequest('/me/player/recently-played', accessToken, {
+      limit,
+    });
+
+    return data.items.map((item: any) => ({
+      track: this.formatTrack(item.track),
+      playedAt: item.played_at,
+      context: item.context ? {
+        type: item.context.type,
+        href: item.context.href,
+        externalUrls: item.context.external_urls,
+        uri: item.context.uri,
+      } : undefined,
+    }));
+  }
+
+  
   private formatTrack(track: any): ITrack {
     return {
       spotifyId: track.id,
