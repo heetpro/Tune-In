@@ -55,7 +55,6 @@ export class spotifyService {
 
   async getAccessToken(code: string): Promise<any> {
     try {
-      // Create form data - this is the correct way to send form-urlencoded data with axios
       const formData = querystring.stringify({
         grant_type: 'authorization_code',
         code,
@@ -79,6 +78,25 @@ export class spotifyService {
       throw new Error('Failed to get access token from Spotify');
     }
   }
+
+  private async makeSpotifyRequest(endpoint: string, accessToken: string, params?: any) {
+    try {
+      const response = await axios.get(`${this.baseUrl}${endpoint}`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        params,
+      });
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        throw new Error('SPOTIFY_TOKEN_EXPIRED');
+      }
+      throw error;
+    }
+  }
+
 
   async getUserProfile(accessToken: string): Promise<any> {
     try {
