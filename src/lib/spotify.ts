@@ -1,4 +1,4 @@
-import type { IArtist, ICurrentTrack, IPlaylist, IRecentlyPlayedTrack, ITrack } from "@/types";
+import type { IArtist, IAudioFeatures, ICurrentTrack, IPlaylist, IRecentlyPlayedTrack, ITrack } from "@/types";
 import axios from "axios";
 import querystring from 'querystring';
 import SpeedcastApi from "speedcast-api";
@@ -188,6 +188,28 @@ export class spotifyService {
         externalUrls: item.context.external_urls,
         uri: item.context.uri,
       } : undefined,
+    }));
+  }
+
+  async getAudioFeatures(accessToken: string, trackIds: string[]): Promise<IAudioFeatures[]> {
+    const data = await this.makeSpotifyRequest('/audio-features', accessToken, {
+      ids: trackIds.join(','),
+    });
+
+    return data.audio_features.map((features: any) => ({
+      danceability: features.danceability,
+      energy: features.energy,
+      key: features.key,
+      mode: features.mode,
+      speechiness: features.speechiness,
+      loudness: features.loudness,
+      acousticness: features.acousticness,
+      instrumentalness: features.instrumentalness,
+      liveness: features.liveness,
+      valence: features.valence,
+      duration: features.duration_ms,
+      tempo: features.tempo,
+      timeSignature: features.time_signature,
     }));
   }
 
