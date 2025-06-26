@@ -6,15 +6,16 @@ export class spotifyService {
   private clientId: string;
   private clientSecret: string;
   private redirectUri: string;
+  private baseUrl = 'https://api.spotify.com/v1';
 
   constructor() {
     this.clientId = process.env.SPOTIFY_CLIENT_ID!;
     this.clientSecret = process.env.SPOTIFY_CLIENT_SECRET!;
     this.redirectUri = process.env.SPOTIFY_REDIRECT_URI!;
 
-    console.log('Spotify Service Initialized:');
-    console.log(`Client ID: ${this.clientId?.substring(0, 5)}...`);
-    console.log(`Redirect URI: ${this.redirectUri}`);
+    // console.log('Spotify Service Initialized:');
+    // console.log(`Client ID: ${this.clientId?.substring(0, 5)}...`);
+    // console.log(`Redirect URI: ${this.redirectUri}`);
   }
 
   getAuthUrl() {
@@ -22,8 +23,11 @@ export class spotifyService {
       'user-read-private',
       'user-read-email',
       'user-top-read',
+      'user-read-recently-played',
       'user-library-read',
-      'playlist-read-private'
+      'playlist-read-private',
+      'user-read-currently-playing',
+      'user-read-playback-state'
     ].join(' ');
     const params = new URLSearchParams({
       response_type: 'code',
