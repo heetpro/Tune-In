@@ -1,3 +1,4 @@
+import type { IArtist } from "@/types";
 import axios from "axios";
 import querystring from 'querystring';
 import SpeedcastApi from "speedcast-api";
@@ -126,6 +127,25 @@ export class spotifyService {
       console.error('Spotify tracks error:', error.response?.data || error.message);
       throw new Error('Failed to get user top tracks from Spotify');
     }
+  }
+
+
+  async getTopArtists(accessToken: string, timeRange: 'short_term' | 'medium_term' | 'long_term' = 'medium_term', limit: number = 50): Promise<IArtist[]> {
+    const data = await this.makeSpotifyRequest('/me/top/artists', accessToken, {
+      time_range: timeRange,
+      limit,
+    });
+
+    return data.items.map((artist: any) => ({
+      spotifyId: artist.id,
+      name: artist.name,
+      genres: artist.genres,
+      popularity: artist.popularity,
+      images: artist.images,
+      externalUrl: {
+        spotify: artist.external_urls.spotify,
+      },
+    }));
   }
 }
 
