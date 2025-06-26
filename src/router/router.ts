@@ -4,7 +4,7 @@ import { spotifyService } from "@/lib/spotify";
 import { asyncHandler } from "@/handlers/errorHandler";
 import { getCallback } from "@/functions/getCallback";
 import { authenticate } from "@/middleware/auth";
-import { getProfile } from "@/functions/getProfile";
+import { getProfile } from "@/functions/spotify/getProfile";
 import { setUsername } from "@/functions/setUsername";
 import { checkOnboarding } from "@/functions/checkOnboarding";
 import { sendFriendRequest } from "@/functions/sendFriendRequest";
@@ -18,7 +18,7 @@ import { getLogout } from "@/functions/getLogout";
 import { getMessages } from "@/functions/socket/getMessages";
 import { getUsersToChat } from "@/functions/socket/getUsersToChat";
 import { sendMessage } from "@/functions/socket/sendMessage";
-import { syncSpotifyData } from "@/functions/syncSpotifyData";
+import { syncSpotifyData } from "@/functions/spotify/syncSpotifyData";
 
 const router = Router();
 const spotify = new spotifyService();
