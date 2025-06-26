@@ -294,6 +294,5 @@ export class spotifyService {
       .sort((a, b) => b.weight - a.weight)
       .slice(0, 20);
   }
-
 }
 
