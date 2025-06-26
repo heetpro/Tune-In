@@ -19,6 +19,14 @@ import { getMessages } from "@/functions/socket/getMessages";
 import { getUsersToChat } from "@/functions/socket/getUsersToChat";
 import { sendMessage } from "@/functions/socket/sendMessage";
 import { syncSpotifyData } from "@/functions/spotify/syncSpotifyData";
+import { getMusicProfile } from "@/functions/spotify/getMusicProfile";
+import { getTopArtists } from "@/functions/spotify/getTopArtists";
+import { getTopTracks } from "@/functions/spotify/getTopTracks";
+import { getRecentTracks } from "@/functions/spotify/getRecentTracks";
+import { getPlaylists } from "@/functions/spotify/getPlaylists";
+import { getCurrentTrack } from "@/functions/spotify/getCurrentTrack";
+import { getTopGenres } from "@/functions/spotify/getTopGenres";
+import { getAudioFeatures } from "@/functions/spotify/getAudioFeatures";
 
 const router = Router();
 const spotify = new spotifyService();
@@ -39,12 +47,14 @@ router.get('/messages/:id', authenticate, asyncHandler(getMessages));
 router.post('/messages/send/:id', authenticate, asyncHandler(sendMessage));
 
 router.get('/spotify/sync', authenticate, asyncHandler(syncSpotifyData));
-// router.get('/spotify/top-artists', authenticate, asyncHandler(getTopArtists));
-// router.get('/spotify/top-tracks', authenticate, asyncHandler(getTopTracks));
-// router.get('/spotify/liked-tracks', authenticate, asyncHandler(getLikedTracks));
-// router.get('/spotify/playlists', authenticate, asyncHandler(getPlaylists));
-// router.get('/spotify/recently-played', authenticate, asyncHandler(getRecentlyPlayed));
-// router.get('/spotify/current-track', authenticate, asyncHandler(getCurrentTrack));
+router.get('/spotify/profile', authenticate, asyncHandler(getMusicProfile));
+router.get('/spotify/top-artists', authenticate, asyncHandler(getTopArtists));
+router.get('/spotify/top-tracks', authenticate, asyncHandler(getTopTracks));
+router.get('/spotify/recent-tracks', authenticate, asyncHandler(getRecentTracks));
+router.get('/spotify/playlists', authenticate, asyncHandler(getPlaylists));
+router.get('/spotify/current-track', authenticate, asyncHandler(getCurrentTrack));
+router.get('/spotify/top-genres', authenticate, asyncHandler(getTopGenres));
+router.get('/spotify/audio-features', authenticate, asyncHandler(getAudioFeatures));
 
 
 router.get('/health', (req, res) => {

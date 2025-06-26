@@ -1,5 +1,5 @@
 {
-  "name": "sajna",
+  "name": "Gdisk",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
