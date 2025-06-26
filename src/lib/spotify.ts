@@ -1,4 +1,4 @@
-import type { IArtist, ITrack } from "@/types";
+import type { IArtist, IPlaylist, ITrack } from "@/types";
 import axios from "axios";
 import querystring from 'querystring';
 import SpeedcastApi from "speedcast-api";
@@ -123,7 +123,6 @@ export class spotifyService {
     return data.items.map((track: any) => this.formatTrack(track));
   }
 
-  // Get user's saved tracks (liked songs)
   async getLikedTracks(accessToken: string, limit: number = 50, offset: number = 0): Promise<ITrack[]> {
     const data = await this.makeSpotifyRequest('/me/tracks', accessToken, {
       limit,
@@ -148,6 +147,28 @@ export class spotifyService {
       images: artist.images,
       externalUrl: {
         spotify: artist.external_urls.spotify,
+      },
+    }));
+  }
+
+  async getUserPlaylists(accessToken: string, limit: number = 50): Promise<IPlaylist[]> {
+    const data = await this.makeSpotifyRequest('/me/playlists', accessToken, {
+      limit,
+    });
+
+    return data.items.map((playlist: any) => ({
+      spotifyId: playlist.id,
+      public: playlist.public,
+      name: playlist.name,
+      description: playlist.description,
+      collaborative: playlist.collaborative,
+      owner: {
+        spotifyId: playlist.owner.id,
+        displayName: playlist.owner.display_name,
+      },
+      images: playlist.images,
+      externalUrl: {
+        spotify: playlist.external_urls.spotify,
       },
     }));
   }
