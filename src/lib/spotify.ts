@@ -1,4 +1,4 @@
-import type { IArtist } from "@/types";
+import type { IArtist, ITrack } from "@/types";
 import axios from "axios";
 import querystring from 'querystring';
 import SpeedcastApi from "speedcast-api";
@@ -114,19 +114,23 @@ export class spotifyService {
     }
   }
 
-  async getUserTopTracks(accessToken: string, limit = 20): Promise<any> {
-    try {
-      const response = await axios.get(`https://api.spotify.com/v1/me/top/tracks?limit=${limit}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
+  async getTopTracks(accessToken: string, timeRange: 'short_term' | 'medium_term' | 'long_term' = 'medium_term', limit: number = 50): Promise<ITrack[]> {
+    const data = await this.makeSpotifyRequest('/me/top/tracks', accessToken, {
+      time_range: timeRange,
+      limit,
+    });
 
-      return response.data;
-    } catch (error: any) {
-      console.error('Spotify tracks error:', error.response?.data || error.message);
-      throw new Error('Failed to get user top tracks from Spotify');
-    }
+    return data.items.map((track: any) => this.formatTrack(track));
+  }
+
+  // Get user's saved tracks (liked songs)
+  async getLikedTracks(accessToken: string, limit: number = 50, offset: number = 0): Promise<ITrack[]> {
+    const data = await this.makeSpotifyRequest('/me/tracks', accessToken, {
+      limit,
+      offset,
+    });
+
+    return data.items.map((item: any) => this.formatTrack(item.track));
   }
 
 
@@ -147,5 +151,54 @@ export class spotifyService {
       },
     }));
   }
+
+  private formatTrack(track: any): ITrack {
+    return {
+      spotifyId: track.id,
+      name: track.name,
+      artists: track.artists.map((artist: any) => ({
+        spotifyId: artist.id,
+        name: artist.name,
+        genres: [],
+        popularity: 0,
+        images: [],
+        externalUrl: {
+          spotify: artist.external_urls.spotify,
+        },
+      })),
+      album: {
+        spotifyId: track.album.id,
+        albumType: track.album.album_type,
+        genres: [],
+        name: track.album.name,
+        artists: track.album.artists.map((artist: any) => ({
+          spotifyId: artist.id,
+          name: artist.name,
+          genres: [],
+          popularity: 0,
+          images: [],
+          externalUrl: {
+            spotify: artist.external_urls.spotify,
+          },
+        })),
+        images: track.album.images,
+        releaseDate: new Date(track.album.release_date),
+        totalTracks: track.album.total_tracks,
+        externalUrl: {
+          spotify: track.album.external_urls.spotify,
+        },
+      },
+      duration: track.duration_ms,
+      popularity: track.popularity,
+      explicit: track.explicit,
+      previewUrl: track.preview_url,
+      externalUrl: {
+        spotify: track.external_urls.spotify,
+      },
+      href: track.href,
+    };
+  }
+
+
 }
 
