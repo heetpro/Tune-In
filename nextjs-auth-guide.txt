@@ -1,0 +1,572 @@
+# Next.js Frontend Authentication Guide
+
+## Setup Authentication Flow
+
+### 1. Install Required Packages
+```bash
+npm install js-cookie axios next-auth
+```
+
+### 2. Create Auth API Routes
+
+Create `pages/api/auth/[...nextauth].js`:
+
+```javascript
+import NextAuth from 'next-auth';
+import { BACKEND_URL } from '@/lib/constants';
+
+export default NextAuth({
+  providers: [
+    {
+      id: 'spotify-custom',
+      name: 'Spotify Custom',
+      type: 'oauth',
+      authorization: `${BACKEND_URL}/spotify/login`,
+      token: {
+        url: `${BACKEND_URL}/spotify/callback`,
+        async request({ params, provider }) {
+          // Redirect to Spotify login
+          return { tokens: { redirect: true } };
+        },
+      },
+      userinfo: {
+        async request() {
+          return null;
+        },
+      },
+      profile() {
+        return { id: 'placeholder' };
+      },
+    },
+  ],
+  callbacks: {
+    async redirect({ url }) {
+      // Handle redirects from Spotify callback
+      return url;
+    },
+    async jwt({ token }) {
+      return token;
+    },
+    async session({ session, token }) {
+      return session;
+    },
+  },
+  pages: {
+    signIn: '/login',
+  },
+});
+```
+
+### 3. Create Auth Context
+
+Create `lib/AuthContext.js`:
+
+```javascript
+import { createContext, useContext, useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Cookies from 'js-cookie';
+import axios from 'axios';
+import { BACKEND_URL } from './constants';
+
+const AuthContext = createContext();
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [token, setToken] = useState(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    // Check for token in cookies
+    const storedToken = Cookies.get('auth_token');
+    if (storedToken) {
+      setToken(storedToken);
+      fetchUserProfile(storedToken);
+    } else {
+      setLoading(false);
+    }
+    
+    // Handle Spotify OAuth callback
+    const handleCallback = async () => {
+      const code = router.query.code;
+      const state = router.query.state;
+      
+      if (code && state && router.pathname === '/callback') {
+        try {
+          const response = await axios.get(`${BACKEND_URL}/spotify/callback`, {
+            params: { code, state }
+          });
+          
+          const { token, user } = response.data;
+          
+          if (token) {
+            Cookies.set('auth_token', token, { expires: 7 });
+            setToken(token);
+            setUser(user);
+            router.push('/dashboard');
+          }
+        } catch (error) {
+          console.error('Authentication error:', error);
+          router.push('/login?error=auth_failed');
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    
+    if (router.isReady) {
+      handleCallback();
+    }
+  }, [router.isReady, router.query]);
+
+  const fetchUserProfile = async (authToken) => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/profile/me`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      });
+      
+      setUser(response.data);
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
+      logout();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const login = () => {
+    window.location.href = `${BACKEND_URL}/spotify/login`;
+  };
+
+  const logout = () => {
+    Cookies.remove('auth_token');
+    setUser(null);
+    setToken(null);
+    router.push('/login');
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout, token }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => useContext(AuthContext);
+```
+
+### 4. Create Constants File
+
+Create `lib/constants.js`:
+
+```javascript
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+```
+
+## Implement Authentication Components
+
+### 1. Login Page
+
+Create `pages/login.js`:
+
+```jsx
+import { useAuth } from '@/lib/AuthContext';
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+
+export default function Login() {
+  const { login, user, loading } = useAuth();
+  const router = useRouter();
+  
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/dashboard');
+    }
+  }, [loading, user, router]);
+  
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+      <div className="p-8 bg-white rounded-lg shadow-md">
+        <h1 className="mb-6 text-2xl font-bold text-center">Welcome to SpotiLove</h1>
+        <p className="mb-6 text-gray-600 text-center">
+          Connect with people who share your music taste
+        </p>
+        <button 
+          onClick={login} 
+          className="w-full py-2 px-4 bg-green-500 text-white font-semibold rounded-lg hover:bg-green-600"
+        >
+          Login with Spotify
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+### 2. Callback Page
+
+Create `pages/callback.js`:
+
+```jsx
+import { useAuth } from '@/lib/AuthContext';
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+
+export default function Callback() {
+  const { loading } = useAuth();
+  const router = useRouter();
+  
+  // This page is just a loading screen while the AuthContext handles the callback
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen">
+      <h2 className="text-xl mb-4">Logging you in...</h2>
+      <div className="spinner"></div>
+    </div>
+  );
+}
+```
+
+### 3. Apply Auth Provider to App
+
+Update `pages/_app.js`:
+
+```jsx
+import { AuthProvider } from '@/lib/AuthContext';
+import '@/styles/globals.css';
+
+function MyApp({ Component, pageProps }) {
+  return (
+    <AuthProvider>
+      <Component {...pageProps} />
+    </AuthProvider>
+  );
+}
+
+export default MyApp;
+```
+
+## Create Protected Routes
+
+### 1. Profile Page Example
+
+Create `pages/profile.js`:
+
+```jsx
+import { useAuth } from '@/lib/AuthContext';
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
+import Link from 'next/link';
+
+export default function Profile() {
+  const { user, loading, logout } = useAuth();
+  const router = useRouter();
+  
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    }
+  }, [user, loading, router]);
+  
+  if (loading) {
+    return <div className="p-8">Loading...</div>;
+  }
+  
+  if (!user) {
+    return null;
+  }
+  
+  return (
+    <div className="p-8">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold">My Profile</h1>
+        <button 
+          onClick={logout} 
+          className="py-2 px-4 bg-red-500 text-white rounded"
+        >
+          Logout
+        </button>
+      </div>
+      
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        {user.profilePicture && (
+          <img 
+            src={user.profilePicture} 
+            alt={user.displayName} 
+            className="w-24 h-24 rounded-full mx-auto mb-4"
+          />
+        )}
+        
+        <h2 className="text-xl font-semibold text-center">{user.displayName}</h2>
+        
+        {user.username && (
+          <p className="text-center text-gray-600 mb-4">@{user.username}</p>
+        )}
+        
+        <div className="mt-6 grid grid-cols-2 gap-4">
+          <div className="p-4 bg-gray-50 rounded">
+            <h3 className="font-medium">Display Name</h3>
+            <p>{user.displayName}</p>
+          </div>
+          
+          <div className="p-4 bg-gray-50 rounded">
+            <h3 className="font-medium">Full Name</h3>
+            <p>{user.firstName} {user.lastName || ''}</p>
+          </div>
+          
+          {user.gender && (
+            <div className="p-4 bg-gray-50 rounded">
+              <h3 className="font-medium">Gender</h3>
+              <p>{user.gender}</p>
+            </div>
+          )}
+          
+          {user.age && (
+            <div className="p-4 bg-gray-50 rounded">
+              <h3 className="font-medium">Age</h3>
+              <p>{user.age}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+### 2. Dashboard Page Example
+
+Create `pages/dashboard.js`:
+
+```jsx
+import { useAuth } from '@/lib/AuthContext';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/router';
+import axios from 'axios';
+import { BACKEND_URL } from '@/lib/constants';
+import Link from 'next/link';
+
+export default function Dashboard() {
+  const { user, loading, token } = useAuth();
+  const router = useRouter();
+  const [friends, setFriends] = useState([]);
+  const [friendsLoading, setFriendsLoading] = useState(true);
+  
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+    } else if (user && token) {
+      fetchFriends();
+    }
+  }, [user, loading, token, router]);
+  
+  const fetchFriends = async () => {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/friends`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+      setFriends(response.data);
+    } catch (error) {
+      console.error('Failed to fetch friends:', error);
+    } finally {
+      setFriendsLoading(false);
+    }
+  };
+  
+  if (loading || !user) {
+    return <div className="p-8">Loading...</div>;
+  }
+  
+  return (
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-8">Welcome, {user.displayName}</h1>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-4">My Profile</h2>
+          <div className="flex items-center">
+            {user.profilePicture && (
+              <img 
+                src={user.profilePicture} 
+                alt={user.displayName} 
+                className="w-16 h-16 rounded-full mr-4"
+              />
+            )}
+            <div>
+              <p className="font-medium">{user.displayName}</p>
+              {user.username && <p className="text-sm text-gray-600">@{user.username}</p>}
+            </div>
+          </div>
+          <div className="mt-4">
+            <Link href="/profile" className="text-blue-500 hover:underline">
+              View Full Profile
+            </Link>
+          </div>
+        </div>
+        
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-4">Friends</h2>
+          {friendsLoading ? (
+            <p>Loading friends...</p>
+          ) : friends.length > 0 ? (
+            <ul className="divide-y divide-gray-200">
+              {friends.map(friend => (
+                <li key={friend._id} className="py-3 flex items-center">
+                  {friend.profilePicture && (
+                    <img 
+                      src={friend.profilePicture} 
+                      alt={friend.displayName} 
+                      className="w-10 h-10 rounded-full mr-3"
+                    />
+                  )}
+                  <span>{friend.displayName}</span>
+                  <span className={`ml-auto px-2 py-1 text-xs rounded ${friend.isOnline ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                    {friend.isOnline ? 'Online' : 'Offline'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-gray-500">No friends yet</p>
+          )}
+          <div className="mt-4">
+            <Link href="/find-friends" className="text-blue-500 hover:underline">
+              Find Friends
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+## Axios Request Helper
+
+Create a `lib/api.js` for making authenticated requests:
+
+```javascript
+import axios from 'axios';
+import Cookies from 'js-cookie';
+import { BACKEND_URL } from './constants';
+
+const api = axios.create({
+  baseURL: BACKEND_URL,
+});
+
+// Add auth token to all requests
+api.interceptors.request.use(config => {
+  const token = Cookies.get('auth_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Handle token expiration
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      Cookies.remove('auth_token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+export default api;
+```
+
+## Usage Examples
+
+### Example 1: Update Username
+
+```javascript
+import api from '@/lib/api';
+import { useState } from 'react';
+
+export default function UpdateUsername() {
+  const [username, setUsername] = useState('');
+  const [status, setStatus] = useState('');
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setStatus('loading');
+    
+    try {
+      await api.post('/username', { username });
+      setStatus('success');
+    } catch (error) {
+      console.error('Failed to update username:', error);
+      setStatus('error');
+    }
+  };
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      <input 
+        type="text" 
+        value={username} 
+        onChange={e => setUsername(e.target.value)} 
+        placeholder="New username"
+      />
+      <button type="submit" disabled={status === 'loading'}>
+        {status === 'loading' ? 'Updating...' : 'Update Username'}
+      </button>
+      
+      {status === 'success' && <p>Username updated successfully!</p>}
+      {status === 'error' && <p>Failed to update username</p>}
+    </form>
+  );
+}
+```
+
+### Example 2: Check Onboarding Status
+
+```javascript
+import api from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
+
+export default function OnboardingCheck() {
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  
+  useEffect(() => {
+    const checkOnboarding = async () => {
+      try {
+        const response = await api.get('/onboarding');
+        setHasCompletedOnboarding(response.data.hasCompletedOnboarding);
+        
+        if (!response.data.hasCompletedOnboarding) {
+          router.push('/onboarding');
+        }
+      } catch (error) {
+        console.error('Failed to check onboarding status:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkOnboarding();
+  }, [router]);
+  
+  if (loading) {
+    return <div>Checking your profile setup...</div>;
+  }
+  
+  return (
+    <div>
+      {hasCompletedOnboarding ? (
+        <p>Welcome back! Your profile is complete.</p>
+      ) : (
+        <p>Please complete your profile setup to continue.</p>
+      )}
+    </div>
+  );
+} 

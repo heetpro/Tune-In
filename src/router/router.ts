@@ -18,6 +18,7 @@ import { getLogout } from "@/functions/getLogout";
 import { getMessages } from "@/functions/socket/getMessages";
 import { getUsersToChat } from "@/functions/socket/getUsersToChat";
 import { sendMessage } from "@/functions/socket/sendMessage";
+import { syncSpotifyData } from "@/functions/syncSpotifyData";
 
 const router = Router();
 const spotify = new spotifyService();
@@ -36,6 +37,14 @@ router.get('/messages/users', authenticate, asyncHandler(getUsersToChat));
 router.get('/messages/:id', authenticate, asyncHandler(getMessages));
 
 router.post('/messages/send/:id', authenticate, asyncHandler(sendMessage));
+
+router.get('/spotify/sync', authenticate, asyncHandler(syncSpotifyData));
+// router.get('/spotify/top-artists', authenticate, asyncHandler(getTopArtists));
+// router.get('/spotify/top-tracks', authenticate, asyncHandler(getTopTracks));
+// router.get('/spotify/liked-tracks', authenticate, asyncHandler(getLikedTracks));
+// router.get('/spotify/playlists', authenticate, asyncHandler(getPlaylists));
+// router.get('/spotify/recently-played', authenticate, asyncHandler(getRecentlyPlayed));
+// router.get('/spotify/current-track', authenticate, asyncHandler(getCurrentTrack));
 
 
 router.get('/health', (req, res) => {

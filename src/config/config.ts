@@ -27,7 +27,7 @@ export const config = {
         delayMs: process.env.SLOW_DOWN_DELAY_MS || 1000,
     },
     cors: {
-        origin: process.env.CORS_ORIGIN || '*',
+        origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
         methods: process.env.CORS_METHODS || 'GET,HEAD,PUT,PATCH,POST,DELETE',
         allowedHeaders: process.env.CORS_ALLOWED_HEADERS || 'Content-Type,Authorization',
     },
