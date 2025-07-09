@@ -1,0 +1,675 @@
+# SpotiLove - Frontend Integration Guide (Next.js + TypeScript)
+
+## Overview
+This guide provides instructions for integrating a Next.js TypeScript frontend with the SpotiLove backend. The backend is a Node.js application built with Express, Socket.IO, and MongoDB, with Spotify API integration.
+
+## API Endpoints
+
+### Authentication
+- `GET /spotify/login` - Redirect users to Spotify for authentication
+- `GET /spotify/callback` - Callback URL after Spotify authentication
+- `POST /logout` - Log out the current user
+- `GET /profile/me` - Get the current user's profile (requires authentication)
+- `POST /username` - Set or update username (requires authentication)
+- `GET /onboarding` - Check if user has completed onboarding (requires authentication)
+
+### Messaging
+- `GET /messages/users` - Get users available to chat with (requires authentication)
+- `GET /messages/:id` - Get message history for a specific conversation (requires authentication)
+- `POST /messages/send/:id` - Send a message to a specific user (requires authentication)
+
+### Friend Management
+- `GET /` - Get all friends (requires authentication)
+- `GET /search` - Search for users (requires authentication)
+- `GET /requests` - Get all friend requests (requires authentication)
+- `POST /request` - Send a friend request (requires authentication)
+- `PUT /request/:requestId/accept` - Accept a friend request (requires authentication)
+- `PUT /request/:requestId/reject` - Reject a friend request (requires authentication)
+- `DELETE /:friendId` - Remove a friend (requires authentication)
+
+### Spotify Integration
+- `GET /spotify/sync` - Sync user data from Spotify (requires authentication)
+- `GET /spotify/profile` - Get user's music profile (requires authentication)
+- `GET /spotify/top-artists` - Get user's top artists (requires authentication)
+- `GET /spotify/top-tracks` - Get user's top tracks (requires authentication)
+- `GET /spotify/recent-tracks` - Get user's recently played tracks (requires authentication)
+- `GET /spotify/playlists` - Get user's playlists (requires authentication)
+- `GET /spotify/current-track` - Get user's currently playing track (requires authentication)
+- `GET /spotify/top-genres` - Get user's top genres (requires authentication)
+- `GET /spotify/audio-features` - Get audio features for user's top tracks (requires authentication)
+
+### System
+- `GET /health` - Check API health
+
+## Authentication Flow
+
+1. **Initial Authentication**:
+   - Redirect users to `/spotify/login` to authenticate with Spotify
+   - After successful authentication, users are redirected to the callback URL
+   - The backend sets JWT tokens in cookies for authenticated requests
+
+2. **Maintaining Authentication**:
+   - JWT tokens are stored in HTTP-only cookies
+   - Protected routes require valid JWT tokens
+   - Handle token expiration with automatic refreshes
+
+## Setting Up Next.js Frontend
+
+### 1. Project Setup
+
+```bash
+npx create-next-app@latest spotilove-frontend --typescript
+cd spotilove-frontend
+npm install axios socket.io-client cookies-next jwt-decode
+```
+
+### 2. Environment Configuration
+
+Create a `.env.local` file:
+
+```
+NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_SOCKET_URL=http://localhost:3000
+```
+
+### 3. API Client Setup
+
+Create an API client that handles authentication and requests:
+
+```typescript
+// src/lib/api.ts
+import axios from 'axios';
+import { getCookie } from 'cookies-next';
+
+const baseURL = process.env.NEXT_PUBLIC_API_URL;
+
+const apiClient = axios.create({
+  baseURL,
+  withCredentials: true, // Important for cookie handling
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor for adding token
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = getCookie('jwt');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for handling errors
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // If error is 401 and not already retrying
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      // Redirect to login
+      window.location.href = '/login';
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
+export default apiClient;
+```
+
+### 4. Authentication Context
+
+Create an authentication context to manage user state:
+
+```typescript
+// src/contexts/AuthContext.tsx
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import { useRouter } from 'next/router';
+import apiClient from '@/lib/api';
+import { IUser } from '@/types';
+
+interface AuthContextType {
+  user: IUser | null;
+  loading: boolean;
+  login: () => void;
+  logout: () => Promise<void>;
+  checkAuth: () => Promise<boolean>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const AuthProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
+  const [user, setUser] = useState<IUser | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const router = useRouter();
+
+  const login = () => {
+    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/spotify/login`;
+  };
+
+  const logout = async () => {
+    try {
+      await apiClient.post('/logout');
+      setUser(null);
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  const checkAuth = async (): Promise<boolean> => {
+    try {
+      const response = await apiClient.get('/profile/me');
+      setUser(response.data);
+      return true;
+    } catch (error) {
+      setUser(null);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout, checkAuth }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = (): AuthContextType => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+```
+
+### 5. Socket.IO Integration
+
+Setup Socket.IO client:
+
+```typescript
+// src/lib/socket.ts
+import { io, Socket } from 'socket.io-client';
+import { getCookie } from 'cookies-next';
+import { WebSocketMessage, WebSocketData } from '@/types';
+
+let socket: Socket | null = null;
+
+export const initializeSocket = (userId: string): Socket => {
+  if (!socket) {
+    const token = getCookie('jwt') as string;
+    
+    socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000', {
+      query: { userId },
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 10,
+    });
+
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket?.id);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+    });
+  }
+
+  return socket;
+};
+
+export const getSocket = (): Socket | null => socket;
+
+export const closeSocket = (): void => {
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+};
+
+export const emitEvent = <T>(eventName: string, data?: T): void => {
+  if (socket && socket.connected) {
+    socket.emit(eventName, data);
+  } else {
+    console.error('Socket not connected, cannot emit event:', eventName);
+  }
+};
+
+export const listenEvent = <T>(eventName: string, callback: (data: T) => void): void => {
+  if (socket) {
+    socket.on(eventName, callback);
+  }
+};
+
+export const removeListener = (eventName: string): void => {
+  if (socket) {
+    socket.off(eventName);
+  }
+};
+```
+
+### 6. Type Definitions
+
+Create TypeScript types matching the backend models:
+
+```typescript
+// src/types/index.ts
+// Copy relevant types from the backend's types/index.ts file
+// Include at minimum:
+export interface IUser {
+  _id: string;
+  spotifyId: string;
+  username?: string;
+  displayName: string;
+  firstName: string;
+  lastName?: string;
+  profilePicture: string;
+  bio: string;
+  age: number;
+  gender: 'male' | 'female' | 'non-binary' | 'other';
+  intrestedIn: ('male' | 'female' | 'non-binary' | 'other')[];
+  city: string;
+  spotifyFollowers: number;
+  country: string;
+  lastSeen: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  hasCompletedOnboarding: boolean;
+  isPremium: boolean;
+  isVerified: boolean;
+  // Additional fields...
+}
+
+export interface IMessage {
+  _id: string;
+  receiverId: string;
+  senderId: string;
+  text?: string;
+  image?: string;
+  isRead?: boolean;
+  readAt?: Date;
+  createdAt?: Date;
+  // Other fields...
+}
+
+// Add other interfaces as needed
+```
+
+### 7. Protected Routes HOC
+
+Create a Higher-Order Component for protected routes:
+
+```typescript
+// src/components/ProtectedRoute.tsx
+import { useRouter } from 'next/router';
+import { useEffect, ReactElement } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+
+interface ProtectedRouteProps {
+  children: ReactElement;
+}
+
+const ProtectedRoute = ({ children }: ProtectedRouteProps): ReactElement | null => {
+  const { user, loading, checkAuth } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    const verify = async () => {
+      const isAuthenticated = await checkAuth();
+      if (!isAuthenticated && !loading) {
+        router.replace('/login');
+      }
+    };
+    
+    verify();
+  }, [checkAuth, router, loading]);
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  return user ? children : null;
+};
+
+export default ProtectedRoute;
+```
+
+### 8. Example API Service
+
+Create API services for different features:
+
+```typescript
+// src/services/friendService.ts
+import apiClient from '@/lib/api';
+import { IUser, IFriendRequest } from '@/types';
+
+export const getFriends = async (): Promise<IUser[]> => {
+  const response = await apiClient.get('/');
+  return response.data;
+};
+
+export const searchUsers = async (query: string): Promise<IUser[]> => {
+  const response = await apiClient.get('/search', { params: { q: query } });
+  return response.data;
+};
+
+export const getFriendRequests = async (): Promise<IFriendRequest[]> => {
+  const response = await apiClient.get('/requests');
+  return response.data;
+};
+
+export const sendFriendRequest = async (userId: string): Promise<any> => {
+  const response = await apiClient.post('/request', { userId });
+  return response.data;
+};
+
+export const acceptFriendRequest = async (requestId: string): Promise<any> => {
+  const response = await apiClient.put(`/request/${requestId}/accept`);
+  return response.data;
+};
+
+export const rejectFriendRequest = async (requestId: string): Promise<any> => {
+  const response = await apiClient.put(`/request/${requestId}/reject`);
+  return response.data;
+};
+
+export const removeFriend = async (friendId: string): Promise<any> => {
+  const response = await apiClient.delete(`/${friendId}`);
+  return response.data;
+};
+```
+
+### 9. Example Page Component
+
+```typescript
+// src/pages/friends.tsx
+import { useState, useEffect } from 'react';
+import { NextPage } from 'next';
+import { useAuth } from '@/contexts/AuthContext';
+import { IUser } from '@/types';
+import { getFriends, removeFriend } from '@/services/friendService';
+import ProtectedRoute from '@/components/ProtectedRoute';
+
+const FriendsPage: NextPage = () => {
+  const [friends, setFriends] = useState<IUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const loadFriends = async () => {
+      try {
+        const data = await getFriends();
+        setFriends(data);
+      } catch (error) {
+        console.error('Failed to load friends:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFriends();
+  }, []);
+
+  const handleRemoveFriend = async (friendId: string) => {
+    try {
+      await removeFriend(friendId);
+      setFriends(friends.filter(friend => friend._id !== friendId));
+    } catch (error) {
+      console.error('Failed to remove friend:', error);
+    }
+  };
+
+  if (loading) {
+    return <div>Loading friends...</div>;
+  }
+
+  return (
+    <div>
+      <h1>My Friends</h1>
+      {friends.length === 0 ? (
+        <p>You don't have any friends yet. Try searching for users!</p>
+      ) : (
+        <ul>
+          {friends.map((friend) => (
+            <li key={friend._id}>
+              <img src={friend.profilePicture} alt={friend.displayName} width={50} height={50} />
+              <h3>{friend.displayName}</h3>
+              <button onClick={() => handleRemoveFriend(friend._id)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+export default function ProtectedFriendsPage() {
+  return (
+    <ProtectedRoute>
+      <FriendsPage />
+    </ProtectedRoute>
+  );
+}
+```
+
+### 10. Setting Up the Chat Component
+
+```typescript
+// src/components/Chat.tsx
+import { useState, useEffect, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { IMessage } from '@/types';
+import { emitEvent, listenEvent, removeListener } from '@/lib/socket';
+
+interface ChatProps {
+  conversationId: string;
+  receiverId: string;
+}
+
+const Chat: React.FC<ChatProps> = ({ conversationId, receiverId }) => {
+  const [messages, setMessages] = useState<IMessage[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const { user } = useAuth();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Fetch initial messages
+    const fetchMessages = async () => {
+      try {
+        const response = await fetch(`/api/messages/${conversationId}`);
+        const data = await response.json();
+        setMessages(data);
+      } catch (error) {
+        console.error('Error fetching messages:', error);
+      }
+    };
+    
+    fetchMessages();
+    
+    // Listen for new messages
+    listenEvent<IMessage>('new_message', (message) => {
+      if (message.receiverId === user?._id || message.senderId === user?._id) {
+        setMessages((prevMessages) => [...prevMessages, message]);
+      }
+    });
+    
+    return () => {
+      removeListener('new_message');
+    };
+  }, [conversationId, user?._id]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !user) return;
+    
+    try {
+      emitEvent('send_message', {
+        conversationId,
+        receiverId,
+        text: newMessage,
+      });
+      
+      // Optimistic update
+      const optimisticMsg: IMessage = {
+        _id: Date.now().toString(),
+        senderId: user._id,
+        receiverId,
+        text: newMessage,
+        createdAt: new Date(),
+      };
+      
+      setMessages([...messages, optimisticMsg]);
+      setNewMessage('');
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
+  return (
+    <div className="chat-container">
+      <div className="messages-container">
+        {messages.map((message) => (
+          <div 
+            key={message._id} 
+            className={`message ${message.senderId === user?._id ? 'sent' : 'received'}`}
+          >
+            {message.text}
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+      
+      <form onSubmit={handleSendMessage} className="message-input">
+        <input
+          type="text"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+        />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  );
+};
+
+export default Chat;
+```
+
+## Deployment Considerations
+
+1. **Environment Configuration**:
+   - Set up proper environment variables for production
+   - Configure CORS settings for your production domains
+
+2. **Authentication Security**:
+   - Use HTTPS for all communications
+   - Implement CSRF protection
+   - Set secure and httpOnly flags for cookies
+
+3. **Performance Optimizations**:
+   - Implement caching where appropriate
+   - Use Next.js SSR/SSG features for better performance
+   - Consider implementing a CDN for static assets
+
+4. **Error Handling**:
+   - Implement proper error handling and logging
+   - Create user-friendly error messages
+   - Set up monitoring for frontend errors
+
+## Best Practices
+
+1. **State Management**:
+   - Use React Context API for global state (authentication, theme, etc.)
+   - Consider Redux or Zustand for more complex state management
+
+2. **Code Organization**:
+   - Follow feature-based or domain-driven design principles
+   - Separate business logic from UI components
+   - Use custom hooks for reusable logic
+
+3. **Testing**:
+   - Write unit tests for components and services
+   - Implement integration tests for critical user flows
+   - Use mock services for API testing
+
+4. **Accessibility**:
+   - Ensure proper semantic HTML usage
+   - Add ARIA attributes where necessary
+   - Test with screen readers and keyboard navigation
+
+5. **Responsive Design**:
+   - Implement responsive layouts for all screen sizes
+   - Use mobile-first approach
+   - Test on multiple devices and browsers
+
+## Example Project Structure
+
+```
+spotilove-frontend/
+├── public/
+├── src/
+│   ├── components/
+│   │   ├── auth/
+│   │   ├── chat/
+│   │   ├── friends/
+│   │   ├── layout/
+│   │   ├── profile/
+│   │   └── shared/
+│   ├── contexts/
+│   │   ├── AuthContext.tsx
+│   │   └── SocketContext.tsx
+│   ├── hooks/
+│   │   ├── useAuth.ts
+│   │   ├── useChat.ts
+│   │   └── useSpotify.ts
+│   ├── lib/
+│   │   ├── api.ts
+│   │   └── socket.ts
+│   ├── pages/
+│   │   ├── api/
+│   │   ├── _app.tsx
+│   │   ├── index.tsx
+│   │   ├── login.tsx
+│   │   ├── profile.tsx
+│   │   └── friends.tsx
+│   ├── services/
+│   │   ├── authService.ts
+│   │   ├── chatService.ts
+│   │   ├── friendService.ts
+│   │   └── spotifyService.ts
+│   ├── styles/
+│   │   ├── globals.css
+│   │   └── components/
+│   └── types/
+│       └── index.ts
+├── .env.local
+├── .env.production
+├── next.config.js
+├── package.json
+└── tsconfig.json
+```
