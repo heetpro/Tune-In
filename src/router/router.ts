@@ -35,10 +35,12 @@ router.get('/spotify/login', (req, res) => {
     const authUrl = spotify.getAuthUrl();
     res.redirect(authUrl);
 });
+
 router.post('/logout', asyncHandler(getLogout));
 router.get('/spotify/callback', asyncHandler(getCallback));
 router.get('/profile/me', authenticate, asyncHandler(getProfile));
 router.post('/username', authenticate, asyncHandler(setUsername));
+
 router.get('/onboarding', authenticate, asyncHandler(checkOnboarding));
 
 router.get('/messages/users', authenticate, asyncHandler(getUsersToChat));
@@ -46,6 +48,7 @@ router.get('/messages/:id', authenticate, asyncHandler(getMessages));
 
 router.post('/messages/send/:id', authenticate, asyncHandler(sendMessage));
 
+// spotify dev sorted
 router.get('/spotify/sync', authenticate, asyncHandler(syncSpotifyData));
 router.get('/spotify/profile', authenticate, asyncHandler(getMusicProfile));
 router.get('/spotify/top-artists', authenticate, asyncHandler(getTopArtists));
