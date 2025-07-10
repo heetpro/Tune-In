@@ -1,11 +1,13 @@
 import mongoose from "mongoose";
 import { config } from "@/config/config";
 
-export function runServer(app: any) {
+// Change to accept the http server instead of the Express app
+export function runServer(server: any) {
   mongoose
     .connect(config.db.url || "")
     .then(() => {
-      app.listen(config.port, () => {
+      // Use the provided server to listen
+      server.listen(config.port, () => {
         console.log(`DB CONNECTED ⚡️ - http://localhost:${config.port}`);
       });
     })

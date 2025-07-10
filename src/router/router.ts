@@ -69,7 +69,7 @@ router.get('/health', (req, res) => {
 });
 
 
-router.get('/', authenticate, asyncHandler(getFriends));
+router.get('/friends', authenticate, asyncHandler(getFriends));
 router.get('/search', authenticate, asyncHandler(searchUsers));
 router.get('/requests', authenticate, asyncHandler(getFriendRequests));
 router.post('/request', authenticate, asyncHandler(sendFriendRequest));

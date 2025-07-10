@@ -9,7 +9,7 @@ export const searchUsers = async (req: AuthRequest, res: Response) => {
 
         if (!query || typeof query !== 'string') {
             return res.status(400).json({ error: 'Search query is required' });
-        }
+        }   
 
         // Search by username (case insensitive)
         const users = await User.find({
