@@ -37,7 +37,6 @@ export const searchUsers = async (req: AuthRequest, res: Response) => {
                 username: user.username,
                 displayName: user.displayName,
                 profilePicture: user.profilePicture,
-                isOnline: user.isOnline,
                 lastSeen: user.lastSeen,
                 friendStatus: isAlreadyFriend ? 'friends' : 
                              hasSentRequest ? 'request-sent' : 
