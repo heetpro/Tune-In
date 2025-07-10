@@ -1,44 +1,82 @@
 import { spotifyService } from "@/lib/spotify";
 import type { AuthRequest } from "@/middleware/auth";
 import { User } from "@/models/User";
+import { MusicProfile } from "@/models/MusicProfile";
 import type { Response } from "express";
-
-
 
 const spotify = new spotifyService();
 
-export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
+// Core function that syncs Spotify data - can be called from API or during auth
+export const syncUserSpotifyData = async (
+    userId: string,
+    accessToken: string
+): Promise<any> => {
     try {
-        const userId = req.user.id;
+        console.log('Starting Spotify data sync for user:', userId);
 
         const user = await User.findById(userId);
-
         if (!user) {
             throw new Error('User not found');
         }
 
-        if (!user.musicProfile.spotifyConnected || !user.musicProfile.spotifyAccessToken) {
-            throw new Error('Spotify not connected');
-
-        }
-        let accessToken = user.musicProfile.spotifyAccessToken;
-
-        if (user.musicProfile.spotifyTokenExpiresAt && user.musicProfile.spotifyTokenExpiresAt < new Date()) {
-            if (!user.musicProfile.spotifyRefreshToken) {
-                throw new Error('Spotify token expired and no refresh token available');
-            }
-
-            const refreshedTokens = await spotify.refreshAccessToken(user.musicProfile.spotifyRefreshToken);
-            accessToken = refreshedTokens.access_token;
-            user.musicProfile.spotifyAccessToken = refreshedTokens.access_token;
-            user.musicProfile.spotifyTokenExpiresAt = new Date(Date.now() + refreshedTokens.expires_in * 1000);
-
-            if (refreshedTokens.refresh_token) {
-                user.musicProfile.spotifyRefreshToken = refreshedTokens.refresh_token;
-            }
+        // Find existing music profile or create a new one
+        let musicProfile;
+        if (user.musicProfile) {
+            // Try to find existing profile
+            musicProfile = await MusicProfile.findById(user.musicProfile);
         }
 
-        console.log('Starting Spotify data sync for user:', userId);
+        if (!musicProfile) {
+            // Create new music profile if none exists
+            musicProfile = new MusicProfile({
+                spotifyConnected: true,
+                spotifyAccessToken: accessToken,
+                spotifyTokenExpiresAt: new Date(Date.now() + 3600 * 1000), // Default 1 hour
+                topArtists: {
+                    short_term: [],
+                    medium_term: [],
+                    long_term: []
+                },
+                topTracks: {
+                    short_term: [],
+                    medium_term: [],
+                    long_term: []
+                },
+                recentTracks: [],
+                playlists: [],
+                topGenres: [],
+                audioFeatures: {
+                    danceability: 0,
+                    energy: 0,
+                    key: 0,
+                    mode: 0,
+                    speechiness: 0,
+                    acousticness: 0,
+                    instrumentalness: 0,
+                    liveness: 0,
+                    valence: 0,
+                    tempo: 0,
+                    duration: 0,
+                    timeSignature: 0,
+                    loudness: 0
+                },
+                lastSyncAt: new Date(),
+                compatibilityScore: new Map<string, number>(),
+                recentlyPlayed: []
+            });
+
+            // Save the new profile
+            await musicProfile.save();
+            
+            // Link it to the user
+            user.musicProfile = musicProfile._id;
+            await user.save();
+        } else {
+            // Update existing profile
+            musicProfile.spotifyConnected = true;
+            musicProfile.spotifyAccessToken = accessToken;
+            await musicProfile.save();
+        }
 
         const [
             topArtistsShort,
@@ -66,40 +104,41 @@ export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
             spotify.getTopGenres(accessToken)
         ]);
 
+        // Instead of accessing user.musicProfile directly, use the musicProfile document
         if (topArtistsShort.status === 'fulfilled') {
-            user.musicProfile.topArtists.short_term = topArtistsShort.value;
+            musicProfile.topArtists.short_term = topArtistsShort.value;
         }
         if (topArtistsMedium.status === 'fulfilled') {
-            user.musicProfile.topArtists.medium_term = topArtistsMedium.value;
+            musicProfile.topArtists.medium_term = topArtistsMedium.value;
         }
         if (topArtistsLong.status === 'fulfilled') {
-            user.musicProfile.topArtists.long_term = topArtistsLong.value;
+            musicProfile.topArtists.long_term = topArtistsLong.value;
         }
 
         if (topTracksShort.status === 'fulfilled') {
-            user.musicProfile.topTracks.short_term = topTracksShort.value;
+            musicProfile.topTracks.short_term = topTracksShort.value;
         }
         if (topTracksMedium.status === 'fulfilled') {
-            user.musicProfile.topTracks.medium_term = topTracksMedium.value;
+            musicProfile.topTracks.medium_term = topTracksMedium.value;
         }
         if (topTracksLong.status === 'fulfilled') {
-            user.musicProfile.topTracks.long_term = topTracksLong.value;
+            musicProfile.topTracks.long_term = topTracksLong.value;
         }
 
         if (recentTracks.status === 'fulfilled') {
-            user.musicProfile.recentTracks = recentTracks.value.map(rt => rt.track).slice(0, 50);
+            musicProfile.recentTracks = recentTracks.value.map(rt => rt.track).slice(0, 50);
         }
 
         if (playlists.status === 'fulfilled') {
-            user.musicProfile.playlists = playlists.value;
+            musicProfile.playlists = playlists.value;
         }
 
         if (currentTrack.status === 'fulfilled' && currentTrack.value) {
-            user.musicProfile.currentlyPlaying = currentTrack.value;
+            musicProfile.currentlyPlaying = currentTrack.value;
         }
 
         if (topGenres.status === 'fulfilled') {
-            user.musicProfile.topGenres = topGenres.value;
+            musicProfile.topGenres = topGenres.value;
         }
 
         try {
@@ -112,7 +151,6 @@ export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
             if (allTopTracks.length > 0) {
                 const uniqueTrackIds = [...new Set(allTopTracks.map(track => track.spotifyId))];
                 const audioFeatures = await spotify.getAudioFeatures(accessToken, uniqueTrackIds.slice(0, 100));
-
 
                 if (audioFeatures.length > 0) {
                     const avgFeatures = audioFeatures.reduce((acc, features) => {
@@ -129,16 +167,15 @@ export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
                         avgFeatures[key] = avgFeatures[key] / audioFeatures.length;
                     });
 
-                    user.musicProfile.audioFeatures = avgFeatures;
+                    musicProfile.audioFeatures = avgFeatures;
                 }
             }
         } catch (audioError) {
             console.error('Error fetching audio features:', audioError);
         }
 
-        user.musicProfile.lastSyncAt = new Date();
-
-        await user.save();
+        musicProfile.lastSyncAt = new Date();
+        await musicProfile.save();
 
         const syncResults = {
             topArtists: {
@@ -155,17 +192,60 @@ export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
             playlists: playlists.status === 'fulfilled' ? playlists.value.length : 0,
             topGenres: topGenres.status === 'fulfilled' ? topGenres.value.length : 0,
             currentTrack: currentTrack.status === 'fulfilled' && currentTrack.value ? true : false,
-            lastSyncAt: user.musicProfile.lastSyncAt,
+            lastSyncAt: musicProfile.lastSyncAt,
         };
 
         console.log('Spotify data sync completed successfully:', syncResults);
+        return syncResults;
+    } catch (error: any) {
+        console.error('Error in syncUserSpotifyData:', error);
+        throw error;
+    }
+};
+
+// API endpoint for manual sync
+export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user._id;
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if musicProfile exists and is connected
+        const musicProfile = user.musicProfile ? await MusicProfile.findById(user.musicProfile) : null;
+
+        if (!musicProfile?.spotifyConnected || !musicProfile?.spotifyAccessToken) {
+            return res.status(400).json({ error: 'Spotify not connected' });
+        }
+        
+        let accessToken = musicProfile.spotifyAccessToken;
+
+        if (musicProfile.spotifyTokenExpiresAt && musicProfile.spotifyTokenExpiresAt < new Date()) {
+            if (!musicProfile.spotifyRefreshToken) {
+                return res.status(401).json({ error: 'Spotify token expired and no refresh token available' });
+            }
+
+            const refreshedTokens = await spotify.refreshAccessToken(musicProfile.spotifyRefreshToken);
+            accessToken = refreshedTokens.access_token;
+            musicProfile.spotifyAccessToken = refreshedTokens.access_token;
+            musicProfile.spotifyTokenExpiresAt = new Date(Date.now() + refreshedTokens.expires_in * 1000);
+
+            if (refreshedTokens.refresh_token) {
+                musicProfile.spotifyRefreshToken = refreshedTokens.refresh_token;
+            }
+            
+            await musicProfile.save();
+        }
+
+        const syncResults = await syncUserSpotifyData(userId, accessToken);
 
         return res.status(200).json({ 
             message: "Spotify data synced successfully",
             syncResults 
         });
-
-
     } catch (error: any) {
         console.error('Error syncing Spotify data:', error);
         
@@ -175,4 +255,4 @@ export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
         
         return res.status(500).json({ error: "Failed to sync Spotify data" });
     }
-}
+};

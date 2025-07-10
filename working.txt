@@ -115,11 +115,14 @@ Spotilove is a music-based dating/social networking application that leverages S
   1. Exchange code for access token
   2. Fetch user profile from Spotify
   3. Find or create user in database
-  4. Store Spotify tokens in user's music profile
-  5. Trigger background process to fetch and store all Spotify music data
-  6. Generate JWT tokens
-  7. Set cookies
-- **Output**: Redirect to frontend with tokens and onboarding status
+  4. Trigger background process to fetch and store all Spotify music data
+     - Top tracks, artists, genres
+     - Recently played tracks
+     - Playlists
+     - Current playing track
+     - Audio features analysis
+  5. Generate JWT tokens
+  6. Redirect to frontend with tokens and onboarding status
 - **Implementation Details**:
   ```typescript
   // Exchange code for access token
@@ -130,44 +133,31 @@ Spotilove is a music-based dating/social networking application that leverages S
   
   // Find or create user
   let user = await User.findOne({ spotifyId: userProfile.id });
-  if (!user) {
-    // Create new user with Spotify profile data
-    user = new User({
-      // User fields...
+  
+  // Automatically sync Spotify data in the background
+  // This will run in parallel while we redirect the user
+  syncUserSpotifyData(user._id, tokenData.access_token)
+    .then(syncResults => {
+      console.log('Initial data sync completed during login:', syncResults);
+    })
+    .catch(error => {
+      console.error('Error during initial Spotify data sync:', error);
     });
-    await user.save();
-  }
-  
-  // Create/update music profile with Spotify tokens
-  
-  // Trigger background sync of all Spotify data
-  syncSpotifyData(user._id, tokenData.access_token).catch(error => {
-    console.error('Background Spotify data sync failed:', error);
-  });
   
   // Generate tokens and redirect
   const token = generateToken({ id: user._id, spotifyId: user.spotifyId }, res);
-  const refreshToken = generateRefreshToken({ id: user._id });
-  
-  return res.redirect(`${process.env.FRONTEND_URL}/auth/success?token=${token}&refresh=${refreshToken}&needsUsername=${needsUsername}`);
   ```
 
-#### 2. Spotify Data Synchronization (`syncSpotifyData.ts`)
-- **Input**: User ID and authentication token
+#### 2. Spotify Data Synchronization (`syncUserSpotifyData` in `syncSpotifyData.ts`)
+- **Input**: User ID and Spotify access token
 - **Process**:
-  1. Fetch user's top tracks, artists, and genres from Spotify
-  2. Fetch recent listening history
-  3. Analyze audio features
-  4. Get playlists
-  5. Get currently playing track
-  6. Update user's music profile in database
-- **Output**: Updated music profile data
-- **Implementation Details**:
-  - Uses multiple endpoints from Spotify API
-  - Aggregates data into a comprehensive music profile
-  - Processes audio features for music taste analysis
-  - Stores everything in MusicProfile collection
-  - Updates user document with reference to music profile
+  1. Fetch user from database
+  2. Make parallel requests to Spotify API for all user data
+  3. Process and format the data
+  4. Calculate audio feature analytics
+  5. Save all data to user's music profile
+- **Output**: Summary of synced data statistics
+- **Usage**: Called both during authentication and by manual sync endpoint
 
 #### 3. Friend Request Management
 - **Sending Request** (`sendFriendRequest.ts`):
