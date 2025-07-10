@@ -1,5 +1,6 @@
 import { Document } from "mongoose";
 import type { Socket } from "socket.io";
+import mongoose from "mongoose";
 
 export interface CustomSocket extends Socket {
   userInfo?: {
@@ -32,7 +33,8 @@ export interface IUser extends Document {
         date: Date;
         count: number;
     };
-    musicProfile: IMusicProfile;
+    // Updated to handle both full documents and references
+    musicProfile: IMusicProfile | mongoose.Types.ObjectId | string;
     friends: string[];
     friendRequests: {
         incoming: string[];

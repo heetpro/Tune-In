@@ -3,6 +3,7 @@ import type { AuthRequest } from "@/middleware/auth";
 import { User } from "@/models/User";
 import { MusicProfile } from "@/models/MusicProfile";
 import type { Response } from "express";
+import mongoose from "mongoose";
 
 const spotify = new spotifyService();
 
@@ -68,7 +69,7 @@ export const syncUserSpotifyData = async (
             // Save the new profile
             await musicProfile.save();
             
-            // Link it to the user
+            // Link it to the user - now the type is properly defined
             user.musicProfile = musicProfile._id;
             await user.save();
         } else {
