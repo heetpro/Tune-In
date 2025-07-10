@@ -20,6 +20,7 @@ Spotilove is a music-based dating/social networking application that leverages S
    - After user approves, Spotify redirects to `/spotify/callback`
    - Backend exchanges authorization code for access token
    - User profile is fetched from Spotify and stored/updated in database
+   - User's Spotify music data (top tracks, artists, genres, etc.) is automatically synced in the background
    - JWT tokens (access + refresh) are generated and sent to frontend
 
 2. **Authentication Middleware**:
@@ -69,7 +70,7 @@ Spotilove is a music-based dating/social networking application that leverages S
 - `GET /onboarding` - Checks user's onboarding status
 
 #### Spotify Data
-- `GET /spotify/sync` - Syncs user's Spotify data
+- `GET /spotify/sync` - Manually refreshes user's Spotify data (not needed on initial login, happens automatically)
 - `GET /spotify/profile` - Gets user's music profile
 - `GET /spotify/top-artists` - Gets user's top artists
 - `GET /spotify/top-tracks` - Gets user's top tracks
@@ -114,8 +115,10 @@ Spotilove is a music-based dating/social networking application that leverages S
   1. Exchange code for access token
   2. Fetch user profile from Spotify
   3. Find or create user in database
-  4. Generate JWT tokens
-  5. Set cookies
+  4. Store Spotify tokens in user's music profile
+  5. Trigger background process to fetch and store all Spotify music data
+  6. Generate JWT tokens
+  7. Set cookies
 - **Output**: Redirect to frontend with tokens and onboarding status
 - **Implementation Details**:
   ```typescript
@@ -130,19 +133,22 @@ Spotilove is a music-based dating/social networking application that leverages S
   if (!user) {
     // Create new user with Spotify profile data
     user = new User({
-      spotifyId: userProfile.id,
-      displayName: userProfile.display_name || userProfile.id,
-      // Other user fields...
-      hasCompletedOnboarding: false
+      // User fields...
     });
     await user.save();
   }
   
-  // Generate tokens
+  // Create/update music profile with Spotify tokens
+  
+  // Trigger background sync of all Spotify data
+  syncSpotifyData(user._id, tokenData.access_token).catch(error => {
+    console.error('Background Spotify data sync failed:', error);
+  });
+  
+  // Generate tokens and redirect
   const token = generateToken({ id: user._id, spotifyId: user.spotifyId }, res);
   const refreshToken = generateRefreshToken({ id: user._id });
   
-  // Redirect to frontend
   return res.redirect(`${process.env.FRONTEND_URL}/auth/success?token=${token}&refresh=${refreshToken}&needsUsername=${needsUsername}`);
   ```
 

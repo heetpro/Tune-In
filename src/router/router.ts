@@ -50,7 +50,9 @@ router.get('/messages/:id', authenticate, asyncHandler(getMessages));
 
 router.post('/messages/send/:id', authenticate, asyncHandler(sendMessage));
 
-// spotify dev sorted
+// Spotify endpoints
+// Note: Initial sync now happens automatically during login
+// This endpoint is for manual refreshes of Spotify data
 router.get('/spotify/sync', authenticate, asyncHandler(syncSpotifyData));
 router.get('/spotify/profile', authenticate, asyncHandler(getMusicProfile));
 router.get('/spotify/top-artists', authenticate, asyncHandler(getTopArtists));
