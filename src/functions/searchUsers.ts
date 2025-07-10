@@ -20,7 +20,7 @@ export const searchUsers = async (req: AuthRequest, res: Response) => {
             ],
             isBanned: false // Don't show banned users
         })
-        .select('_id username displayName profilePicture isOnline lastSeen')
+        .select('_id username displayName profilePicture lastSeen')
         .limit(20);
 
         // For each user, check if the current user has sent them a friend request
