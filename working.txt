@@ -1,0 +1,773 @@
+# Spotilove Backend Technical Documentation
+
+## Overview
+Spotilove is a music-based dating/social networking application that leverages Spotify's API to match users based on their music preferences and listening habits. The backend is built with Node.js, Express, TypeScript, MongoDB, Redis, and Socket.IO to provide a robust, real-time experience.
+
+## Core Architecture
+
+### Server Setup
+- The application uses Express.js as the web framework
+- HTTP server is created using Node.js 'http' module
+- Socket.IO is integrated for real-time communication
+- Redis is used for Socket.IO adapter to enable horizontal scaling
+- MongoDB is used as the primary database
+
+### Authentication Flow
+
+1. **Spotify OAuth 2.0 Flow**:
+   - Users are redirected to `/spotify/login` endpoint
+   - Backend generates an authorization URL with required scopes
+   - After user approves, Spotify redirects to `/spotify/callback`
+   - Backend exchanges authorization code for access token
+   - User profile is fetched from Spotify and stored/updated in database
+   - JWT tokens (access + refresh) are generated and sent to frontend
+
+2. **Authentication Middleware**:
+   - Most API routes are protected by `authenticate` middleware
+   - JWT token is verified from Authorization header
+   - User is loaded from database and attached to request object
+   - Banned users are blocked from accessing the API
+
+3. **Socket Authentication**:
+   - Similar JWT verification for WebSocket connections
+   - User info is attached to socket connection
+
+### Data Models
+
+#### User Model
+- Core user information (spotifyId, username, displayName, etc.)
+- Friend management (friends, friendRequests)
+- Music profile reference
+- Account status (isPremium, isVerified, isBanned)
+- Privacy and notification settings
+- Onboarding status
+
+#### Music Profile
+- Top artists, tracks, and genres
+- Recent listening history
+- Audio feature preferences (danceability, energy, etc.)
+- Playlists
+- Currently playing track
+
+#### Conversations & Messages
+- Message content and metadata
+- Sender and receiver information
+- Read status
+- Timestamps
+
+### API Endpoints
+
+#### Authentication
+- `GET /spotify/login` - Redirects to Spotify OAuth flow
+- `GET /spotify/callback` - Processes OAuth callback from Spotify
+- `POST /logout` - Logs out user by invalidating tokens
+- `GET /auth/check` - Validates authentication token and checks if user exists
+
+#### Profile Management
+- `GET /profile/me` - Gets user's Spotify profile
+- `POST /username` - Sets/updates username
+- `GET /onboarding` - Checks user's onboarding status
+
+#### Spotify Data
+- `GET /spotify/sync` - Syncs user's Spotify data
+- `GET /spotify/profile` - Gets user's music profile
+- `GET /spotify/top-artists` - Gets user's top artists
+- `GET /spotify/top-tracks` - Gets user's top tracks
+- `GET /spotify/recent-tracks` - Gets user's recently played tracks
+- `GET /spotify/playlists` - Gets user's playlists
+- `GET /spotify/current-track` - Gets user's currently playing track
+- `GET /spotify/top-genres` - Gets user's top genres
+- `GET /spotify/audio-features` - Gets audio features for user's top tracks
+
+#### Friend Management
+- `GET /` - Gets user's friends list
+- `GET /search` - Searches for users
+- `GET /requests` - Gets user's friend requests
+- `POST /request` - Sends friend request
+- `PUT /request/:requestId/accept` - Accepts friend request
+- `PUT /request/:requestId/reject` - Rejects friend request
+- `DELETE /:friendId` - Removes a friend
+
+#### Messaging
+- `GET /messages/users` - Gets users available to chat with
+- `GET /messages/:id` - Gets message history with specific user
+- `POST /messages/send/:id` - Sends message to specific user
+
+### Real-time Communication
+
+#### Socket.IO Integration
+- Socket.IO server is initialized with Redis adapter
+- User authentication via JWT
+- Socket events for messaging and online status
+
+#### Socket Service
+- Maps users to their socket connections
+- Provides methods to emit events to specific users or all users
+- Tracks online users
+- Handles connection and disconnection events
+
+### Key Functions and Their Workflows
+
+#### 1. Spotify Authentication Flow (`getCallback.ts`)
+- **Input**: Authorization code from Spotify OAuth
+- **Process**:
+  1. Exchange code for access token
+  2. Fetch user profile from Spotify
+  3. Find or create user in database
+  4. Generate JWT tokens
+  5. Set cookies
+- **Output**: Redirect to frontend with tokens and onboarding status
+- **Implementation Details**:
+  ```typescript
+  // Exchange code for access token
+  const tokenData = await spotify.getAccessToken(code as string);
+  
+  // Fetch user profile
+  const userProfile = await spotify.getUserProfile(tokenData.access_token);
+  
+  // Find or create user
+  let user = await User.findOne({ spotifyId: userProfile.id });
+  if (!user) {
+    // Create new user with Spotify profile data
+    user = new User({
+      spotifyId: userProfile.id,
+      displayName: userProfile.display_name || userProfile.id,
+      // Other user fields...
+      hasCompletedOnboarding: false
+    });
+    await user.save();
+  }
+  
+  // Generate tokens
+  const token = generateToken({ id: user._id, spotifyId: user.spotifyId }, res);
+  const refreshToken = generateRefreshToken({ id: user._id });
+  
+  // Redirect to frontend
+  return res.redirect(`${process.env.FRONTEND_URL}/auth/success?token=${token}&refresh=${refreshToken}&needsUsername=${needsUsername}`);
+  ```
+
+#### 2. Spotify Data Synchronization (`syncSpotifyData.ts`)
+- **Input**: User ID and authentication token
+- **Process**:
+  1. Fetch user's top tracks, artists, and genres from Spotify
+  2. Fetch recent listening history
+  3. Analyze audio features
+  4. Get playlists
+  5. Get currently playing track
+  6. Update user's music profile in database
+- **Output**: Updated music profile data
+- **Implementation Details**:
+  - Uses multiple endpoints from Spotify API
+  - Aggregates data into a comprehensive music profile
+  - Processes audio features for music taste analysis
+  - Stores everything in MusicProfile collection
+  - Updates user document with reference to music profile
+
+#### 3. Friend Request Management
+- **Sending Request** (`sendFriendRequest.ts`):
+  - **Input**: Target user ID
+  - **Process**: Add request to both users' records
+  - **Output**: Success status and updated request data
+  - **Implementation Details**:
+    ```typescript
+    // Add to outgoing requests for sender
+    await User.findByIdAndUpdate(
+      senderId,
+      { $addToSet: { 'friendRequests.outgoing': recipientId } }
+    );
+    
+    // Add to incoming requests for recipient
+    await User.findByIdAndUpdate(
+      recipientId,
+      { $addToSet: { 'friendRequests.incoming': senderId } }
+    );
+    
+    // Emit socket event for real-time notification
+    socketService.emitToUser(recipientId, 'newFriendRequest', { userId: senderId });
+    ```
+
+- **Accepting Request** (`acceptFriendRequest.ts`):
+  - **Input**: Request ID
+  - **Process**: Move from requests to friends list for both users
+  - **Output**: Updated friends list
+  - **Implementation Details**:
+    ```typescript
+    // Add each user to the other's friends list
+    await User.findByIdAndUpdate(
+      currentUserId,
+      { 
+        $addToSet: { friends: requesterId },
+        $pull: { 'friendRequests.incoming': requesterId } 
+      }
+    );
+    
+    await User.findByIdAndUpdate(
+      requesterId,
+      { 
+        $addToSet: { friends: currentUserId },
+        $pull: { 'friendRequests.outgoing': currentUserId } 
+      }
+    );
+    
+    // Emit socket events to both users
+    socketService.emitToUser(requesterId, 'friendRequestAccepted', { userId: currentUserId });
+    ```
+
+#### 4. Messaging System
+- **Getting Messages** (`getMessages.ts`):
+  - **Input**: Conversation ID or user ID
+  - **Process**: Find or create conversation, fetch messages
+  - **Output**: Message history
+  - **Implementation Details**:
+    - Queries conversation collection by participants
+    - Sorts messages by timestamp
+    - Updates read status for incoming messages
+    - Uses pagination for efficient loading
+
+- **Sending Messages** (`sendMessage.ts`):
+  - **Input**: Recipient ID, message content
+  - **Process**: 
+    1. Create message record
+    2. Update conversation
+    3. Emit socket event to recipient
+  - **Output**: Created message data
+  - **Implementation Details**:
+    ```typescript
+    // Create or update conversation
+    let conversation = await Conversation.findOne({
+      participants: { $all: [senderId, recipientId] }
+    });
+    
+    if (!conversation) {
+      conversation = new Conversation({
+        participants: [senderId, recipientId],
+        lastMessage: { content, timestamp: new Date() }
+      });
+      await conversation.save();
+    }
+    
+    // Create message
+    const message = new Message({
+      conversationId: conversation._id,
+      sender: senderId,
+      recipient: recipientId,
+      content,
+      read: false,
+    });
+    await message.save();
+    
+    // Update conversation with last message
+    conversation.lastMessage = { content, timestamp: new Date() };
+    await conversation.save();
+    
+    // Send real-time notification
+    socketService.emitToUser(recipientId, 'newMessage', {
+      message,
+      sender: senderId
+    });
+    ```
+
+### Spotify Integration Details
+
+#### Service Class Implementation (`spotify.ts`)
+- **Core Methods**:
+  - `getAuthUrl()`: Generates OAuth URL with required scopes
+  - `getAccessToken(code)`: Exchanges code for access token
+  - `refreshAccessToken(refreshToken)`: Refreshes expired tokens
+  - `getUserProfile(accessToken)`: Gets basic user info
+  - `getTopTracks(accessToken, timeRange, limit)`: Gets user's top tracks with time range option
+  - `getTopArtists(accessToken, timeRange, limit)`: Gets user's top artists
+  - `getUserPlaylists(accessToken, limit)`: Gets user's playlists
+  - `getRecentlyPlayed(accessToken, limit)`: Gets recently played tracks
+  - `getCurrentTrack(accessToken)`: Gets currently playing track
+  - `getAudioFeatures(accessToken, trackIds)`: Gets audio features for tracks
+  - `getTopGenres(accessToken)`: Analyzes top genres from artists
+
+- **Data Processing**:
+  - `formatTrack(track)`: Transforms Spotify track format to internal model
+  - `formatArtist(artist)`: Transforms Spotify artist format to internal model
+  - `calculateGenreWeights(artists)`: Calculates genre weights from artist data
+
+#### Music Profile Analysis
+
+The system analyzes various audio features from a user's listening history:
+- **Energy**: How energetic the music is
+- **Valence**: The musical positiveness (happy, cheerful vs. sad, angry)
+- **Danceability**: How suitable the track is for dancing
+- **Acousticness**: The measure of acoustic elements vs. electronic
+- **Instrumentalness**: The measure of vocal vs. instrumental content
+- **Tempo**: The pace of the track
+
+These features are used to create a musical "fingerprint" for each user, which helps in matching with similar users.
+
+### Error Handling and Middleware
+
+#### Error Handler (`errorHandler.ts`)
+- Centralized error handling middleware
+- Formats errors consistently
+- Handles different error types (validation, authentication, etc.)
+- Logs errors for monitoring
+
+```typescript
+export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
+  const statusCode = err.statusCode || 500;
+  console.error(err.stack);
+  
+  res.status(statusCode).json({
+    error: err.message || 'Internal Server Error',
+    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+};
+
+export const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+```
+
+#### Rate Limiting (`rateLimiter.ts`)
+- Protects against brute force attacks
+- Limits request frequency
+- Different limits for different endpoints
+- Uses Redis for distributed rate limiting
+
+### Socket Communication Events
+
+#### Client to Server Events
+- `connection`: User connects to socket server
+- `disconnect`: User disconnects
+- `joinConversation`: User joins a conversation room
+- `leaveConversation`: User leaves a conversation room
+- `typing`: User is typing
+- `stopTyping`: User stopped typing
+- `readMessages`: User read messages
+
+#### Server to Client Events
+- `getOnlineUsers`: List of online users
+- `newMessage`: New message notification
+- `messageRead`: Message read receipt
+- `userTyping`: User typing indicator
+- `newFriendRequest`: Friend request notification
+- `friendRequestAccepted`: Friend request accepted notification
+
+### Advanced Features
+
+#### Caching Strategy
+- Redis is used for caching frequently accessed data
+- Cache invalidation on data updates
+- TTL-based cache expiration
+- Distributed cache for horizontal scaling
+
+#### Database Indexing
+- Strategic indexes for frequently queried fields
+- Compound indexes for complex queries
+- Text indexes for search functionality
+
+#### Connection Pooling
+- MongoDB connection pooling for efficiency
+- Connection retry mechanisms
+- Health checking
+
+## API Input/Output Examples
+
+### Authentication
+- **Endpoint**: `GET /spotify/callback`
+- **Input**: `code` query parameter from Spotify OAuth
+- **Output**:
+```json
+// Redirect to frontend with:
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "needsUsername": true
+}
+```
+
+### Profile
+- **Endpoint**: `GET /profile/me`
+- **Input**: JWT token in Authorization header
+- **Output**:
+```json
+{
+  "user": {
+    "id": "60a1b2c3d4e5f6g7h8i9j0k",
+    "spotifyId": "spotify_user_id",
+    "displayName": "John Doe",
+    "username": "johndoe",
+    "profilePicture": "https://...",
+    "hasCompletedOnboarding": true
+  }
+}
+```
+
+### Music Profile
+- **Endpoint**: `GET /spotify/profile`
+- **Input**: JWT token in Authorization header
+- **Output**:
+```json
+{
+  "musicProfile": {
+    "topArtists": [
+      {
+        "spotifyId": "4tZwfgrHOc3mvqYlEYSvVi",
+        "name": "Daft Punk",
+        "genres": ["french house", "electro"],
+        "popularity": 82
+      }
+      // More artists...
+    ],
+    "topTracks": [
+      {
+        "spotifyId": "0DiWol3AO6WpXZgp0goxAV",
+        "name": "Get Lucky",
+        "artists": [
+          {
+            "spotifyId": "4tZwfgrHOc3mvqYlEYSvVi",
+            "name": "Daft Punk"
+          }
+        ],
+        "album": {
+          "spotifyId": "2CJnMhwEEkS8R1ctgt5llf",
+          "name": "Random Access Memories"
+        }
+      }
+      // More tracks...
+    ],
+    "topGenres": [
+      { "name": "pop", "weight": 0.8 },
+      { "name": "rock", "weight": 0.5 },
+      { "name": "indie", "weight": 0.3 }
+    ],
+    "audioFeatures": {
+      "danceability": 0.72,
+      "energy": 0.65,
+      "valence": 0.58,
+      "tempo": 116,
+      "acousticness": 0.25,
+      "instrumentalness": 0.12
+    }
+  }
+}
+```
+
+### Friend Requests
+- **Endpoint**: `GET /requests`
+- **Input**: JWT token in Authorization header
+- **Output**:
+```json
+{
+  "incoming": [
+    {
+      "id": "60a1b2c3d4e5f6g7h8i9j0k",
+      "username": "user123",
+      "displayName": "User 123",
+      "profilePicture": "https://...",
+      "requestId": "req_123456"
+    }
+  ],
+  "outgoing": [
+    {
+      "id": "70a1b2c3d4e5f6g7h8i9j0k",
+      "username": "user456",
+      "displayName": "User 456",
+      "profilePicture": "https://...",
+      "requestId": "req_789012"
+    }
+  ]
+}
+```
+
+### Authentication Check
+- **Endpoint**: `GET /auth/check`
+- **Input**: JWT token in Authorization header
+- **Output**:
+```json
+{
+  "exists": true,
+  "userId": "60a1b2c3d4e5f6g7h8i9j0k"
+}
+```
+
+## Security Considerations
+
+### Authentication Security
+- **JWT Tokens**:
+  - Short-lived access tokens (1 hour)
+  - Longer-lived refresh tokens (30 days)
+  - Tokens signed with secure algorithm
+  - Different secrets for access and refresh tokens
+  
+- **Cookie Security**:
+  - HTTP-only cookies to prevent XSS attacks
+  - Secure flag in production
+  - SameSite policy
+  - CSRF protection
+
+### API Security
+- **CORS Configuration**:
+  - Restricted origins
+  - Allowed methods and headers
+  - Credentials handling
+
+- **Input Validation**:
+  - Request body validation
+  - Parameter sanitization
+  - MongoDB query injection protection
+
+### Rate Limiting
+- **Implementation**:
+  ```typescript
+  // Example from rateLimiter.ts
+  const limiter = rateLimit({
+    windowMs: config.rateLimit.windowMs as number,
+    max: config.rateLimit.max as number,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.ip || 'unknown',
+    handler: (req, res) => {
+      res.status(429).json({
+        error: 'Too many requests, please try again later.'
+      });
+    }
+  });
+  ```
+
+### Data Protection
+- Password-less authentication via Spotify OAuth
+- Database field encryption for sensitive data
+- No storage of Spotify access tokens (only refreshed when needed)
+
+## Error Response Formats
+
+### Standard Error Format
+```json
+{
+  "error": "Error message",
+  "details": {
+    // Additional error details (when available)
+  }
+}
+```
+
+### Common Error Types
+- **Authentication Errors**:
+  ```json
+  {
+    "error": "Unauthorized",
+    "details": {
+      "reason": "Invalid or expired token"
+    }
+  }
+  ```
+
+- **Validation Errors**:
+  ```json
+  {
+    "error": "Validation failed",
+    "details": {
+      "field": "username",
+      "message": "Username must be between 3 and 30 characters"
+    }
+  }
+  ```
+
+- **Resource Not Found**:
+  ```json
+  {
+    "error": "Resource not found",
+    "details": {
+      "resource": "User",
+      "id": "60a1b2c3d4e5f6g7h8i9j0k"
+    }
+  }
+  ```
+
+## Technical Challenges and Solutions
+
+### Handling Spotify Rate Limits
+- Implemented request queueing system
+- Cached frequently accessed data
+- Used exponential backoff for retries
+
+### Real-time Messaging at Scale
+- Used Redis adapter for Socket.IO
+- Implemented message queueing for offline users
+- Designed efficient conversation lookup
+
+### Music Taste Analysis and Matching
+- Created algorithm to compare audio features
+- Weighted genre matching system
+- Calculated compatibility scores based on listening habits
+
+## Database Schema Details
+
+### User Collection
+```typescript
+{
+  _id: ObjectId,
+  spotifyId: String,
+  username: String,
+  displayName: String,
+  firstName: String,
+  lastName: String,
+  profilePicture: String,
+  bio: String,
+  age: Number,
+  gender: String,
+  intrestedIn: [String],
+  city: String,
+  country: String,
+  lastSeen: Date,
+  dailyRolls: {
+    date: Date,
+    count: Number,
+  },
+  musicProfile: {
+    type: ObjectId,
+    ref: "MusicProfile",
+  },
+  friends: [String],
+  friendRequests: {
+    incoming: [String],
+    outgoing: [String],
+  },
+  privacySettings: Object,
+  notifications: Object,
+  isPremium: Boolean,
+  isVerified: Boolean,
+  isBanned: Boolean,
+  banReason: String,
+  banExpiresAt: Date,
+  isAdmin: Boolean,
+  hasCompletedOnboarding: Boolean,
+  createdAt: Date,
+  updatedAt: Date,
+}
+```
+
+### Music Profile Collection
+```typescript
+{
+  _id: ObjectId,
+  userId: {
+    type: ObjectId,
+    ref: "User"
+  },
+  topArtists: [{
+    spotifyId: String,
+    name: String,
+    genres: [String],
+    popularity: Number,
+    images: [{
+      url: String,
+      height: Number,
+      width: Number
+    }]
+  }],
+  topTracks: [{
+    spotifyId: String,
+    name: String,
+    artists: [{
+      spotifyId: String,
+      name: String
+    }],
+    album: {
+      spotifyId: String,
+      name: String,
+      images: [{
+        url: String,
+        height: Number,
+        width: Number
+      }]
+    },
+    popularity: Number
+  }],
+  topGenres: [{
+    name: String,
+    weight: Number
+  }],
+  audioFeatures: {
+    danceability: Number,
+    energy: Number,
+    valence: Number,
+    tempo: Number,
+    acousticness: Number,
+    instrumentalness: Number
+  },
+  recentTracks: [{
+    track: {
+      // Track structure (same as topTracks)
+    },
+    playedAt: Date
+  }],
+  playlists: [{
+    spotifyId: String,
+    name: String,
+    description: String,
+    public: Boolean,
+    collaborative: Boolean,
+    images: [{
+      url: String,
+      height: Number,
+      width: Number
+    }]
+  }],
+  currentlyPlaying: {
+    // Track structure plus:
+    isPlaying: Boolean,
+    progressMs: Number,
+    timestamp: Date
+  },
+  lastSyncAt: Date,
+  spotifyConnected: Boolean
+}
+```
+
+### Conversation Collection
+```typescript
+{
+  _id: ObjectId,
+  participants: [ObjectId], // References User collection
+  lastMessage: {
+    content: String,
+    timestamp: Date
+  },
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Message Collection
+```typescript
+{
+  _id: ObjectId,
+  conversationId: {
+    type: ObjectId,
+    ref: "Conversation"
+  },
+  sender: {
+    type: ObjectId,
+    ref: "User"
+  },
+  recipient: {
+    type: ObjectId,
+    ref: "User"
+  },
+  content: String,
+  read: Boolean,
+  readAt: Date,
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+## Deployment Considerations
+- Environment variables for configuration
+- Separate dev/prod settings
+- Horizontal scaling through Redis adapter
+- Performance monitoring
+- Error logging
+- Database connection pooling
+- Health check endpoints
+- Graceful shutdown handling
+- Container orchestration ready
+- CI/CD pipeline integration

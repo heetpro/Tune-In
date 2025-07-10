@@ -23,7 +23,7 @@ export const getCallback = async (req: Request, res: Response) => {
             console.log('Token data received from Spotify');
             
             const userProfile = await spotify.getUserProfile(tokenData.access_token);
-            console.log('User profile received:', userProfile.id);
+            console.log('User profile received:', userProfile.id , userProfile.display_name, userProfile.firstName);
             
             // Check if user exists
             let user = await User.findOne({ spotifyId: userProfile.id });

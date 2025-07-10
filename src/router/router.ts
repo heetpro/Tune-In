@@ -27,6 +27,7 @@ import { getPlaylists } from "@/functions/spotify/getPlaylists";
 import { getCurrentTrack } from "@/functions/spotify/getCurrentTrack";
 import { getTopGenres } from "@/functions/spotify/getTopGenres";
 import { getAudioFeatures } from "@/functions/spotify/getAudioFeatures";
+import { checkUserExists } from "@/functions/checkUserExists";
 
 const router = Router();
 const spotify = new spotifyService();
@@ -39,6 +40,7 @@ router.get('/spotify/login', (req, res) => {
 router.post('/logout', asyncHandler(getLogout));
 router.get('/spotify/callback', asyncHandler(getCallback));
 router.get('/profile/me', authenticate, asyncHandler(getProfile));
+router.get('/auth/check', authenticate, asyncHandler(checkUserExists));
 router.post('/username', authenticate, asyncHandler(setUsername));
 
 router.get('/onboarding', authenticate, asyncHandler(checkOnboarding));
