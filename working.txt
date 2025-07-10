@@ -20,7 +20,7 @@ Spotilove is a music-based dating/social networking application that leverages S
    - After user approves, Spotify redirects to `/spotify/callback`
    - Backend exchanges authorization code for access token
    - User profile is fetched from Spotify and stored/updated in database
-   - User's Spotify music data (top tracks, artists, genres, etc.) is automatically synced in the background
+   - User's Spotify music data (top tracks, artists, genres, etc.) is automatically synced during authentication
    - JWT tokens (access + refresh) are generated and sent to frontend
 
 2. **Authentication Middleware**:
@@ -38,7 +38,7 @@ Spotilove is a music-based dating/social networking application that leverages S
 #### User Model
 - Core user information (spotifyId, username, displayName, etc.)
 - Friend management (friends, friendRequests)
-- Music profile reference
+- Music profile reference (now properly handled as a reference to MusicProfile model)
 - Account status (isPremium, isVerified, isBanned)
 - Privacy and notification settings
 - Onboarding status
@@ -49,12 +49,7 @@ Spotilove is a music-based dating/social networking application that leverages S
 - Audio feature preferences (danceability, energy, etc.)
 - Playlists
 - Currently playing track
-
-#### Conversations & Messages
-- Message content and metadata
-- Sender and receiver information
-- Read status
-- Timestamps
+- Last synchronization timestamp
 
 ### API Endpoints
 
@@ -80,563 +75,478 @@ Spotilove is a music-based dating/social networking application that leverages S
 - `GET /spotify/top-genres` - Gets user's top genres
 - `GET /spotify/audio-features` - Gets audio features for user's top tracks
 
-#### Friend Management
-- `GET /` - Gets user's friends list
-- `GET /search` - Searches for users
-- `GET /requests` - Gets user's friend requests
-- `POST /request` - Sends friend request
-- `PUT /request/:requestId/accept` - Accepts friend request
-- `PUT /request/:requestId/reject` - Rejects friend request
-- `DELETE /:friendId` - Removes a friend
+## Spotify Integration Implementation Details
 
-#### Messaging
-- `GET /messages/users` - Gets users available to chat with
-- `GET /messages/:id` - Gets message history with specific user
-- `POST /messages/send/:id` - Sends message to specific user
+### 1. Automatic Data Synchronization During Authentication
 
-### Real-time Communication
-
-#### Socket.IO Integration
-- Socket.IO server is initialized with Redis adapter
-- User authentication via JWT
-- Socket events for messaging and online status
-
-#### Socket Service
-- Maps users to their socket connections
-- Provides methods to emit events to specific users or all users
-- Tracks online users
-- Handles connection and disconnection events
-
-### Key Functions and Their Workflows
-
-#### 1. Spotify Authentication Flow (`getCallback.ts`)
-- **Input**: Authorization code from Spotify OAuth
-- **Process**:
-  1. Exchange code for access token
-  2. Fetch user profile from Spotify
-  3. Find or create user in database
-  4. Trigger background process to fetch and store all Spotify music data
-     - Top tracks, artists, genres
-     - Recently played tracks
-     - Playlists
-     - Current playing track
-     - Audio features analysis
-  5. Generate JWT tokens
-  6. Redirect to frontend with tokens and onboarding status
-- **Implementation Details**:
-  ```typescript
-  // Exchange code for access token
-  const tokenData = await spotify.getAccessToken(code as string);
-  
-  // Fetch user profile
-  const userProfile = await spotify.getUserProfile(tokenData.access_token);
-  
-  // Find or create user
-  let user = await User.findOne({ spotifyId: userProfile.id });
-  
-  // Automatically sync Spotify data in the background
-  // This will run in parallel while we redirect the user
-  syncUserSpotifyData(user._id, tokenData.access_token)
-    .then(syncResults => {
-      console.log('Initial data sync completed during login:', syncResults);
-    })
-    .catch(error => {
-      console.error('Error during initial Spotify data sync:', error);
-    });
-  
-  // Generate tokens and redirect
-  const token = generateToken({ id: user._id, spotifyId: user.spotifyId }, res);
-  ```
-
-#### 2. Spotify Data Synchronization (`syncUserSpotifyData` in `syncSpotifyData.ts`)
-- **Input**: User ID and Spotify access token
-- **Process**:
-  1. Fetch user from database
-  2. Make parallel requests to Spotify API for all user data
-  3. Process and format the data
-  4. Calculate audio feature analytics
-  5. Save all data to user's music profile
-- **Output**: Summary of synced data statistics
-- **Usage**: Called both during authentication and by manual sync endpoint
-
-#### 3. Friend Request Management
-- **Sending Request** (`sendFriendRequest.ts`):
-  - **Input**: Target user ID
-  - **Process**: Add request to both users' records
-  - **Output**: Success status and updated request data
-  - **Implementation Details**:
-    ```typescript
-    // Add to outgoing requests for sender
-    await User.findByIdAndUpdate(
-      senderId,
-      { $addToSet: { 'friendRequests.outgoing': recipientId } }
-    );
-    
-    // Add to incoming requests for recipient
-    await User.findByIdAndUpdate(
-      recipientId,
-      { $addToSet: { 'friendRequests.incoming': senderId } }
-    );
-    
-    // Emit socket event for real-time notification
-    socketService.emitToUser(recipientId, 'newFriendRequest', { userId: senderId });
-    ```
-
-- **Accepting Request** (`acceptFriendRequest.ts`):
-  - **Input**: Request ID
-  - **Process**: Move from requests to friends list for both users
-  - **Output**: Updated friends list
-  - **Implementation Details**:
-    ```typescript
-    // Add each user to the other's friends list
-    await User.findByIdAndUpdate(
-      currentUserId,
-      { 
-        $addToSet: { friends: requesterId },
-        $pull: { 'friendRequests.incoming': requesterId } 
-      }
-    );
-    
-    await User.findByIdAndUpdate(
-      requesterId,
-      { 
-        $addToSet: { friends: currentUserId },
-        $pull: { 'friendRequests.outgoing': currentUserId } 
-      }
-    );
-    
-    // Emit socket events to both users
-    socketService.emitToUser(requesterId, 'friendRequestAccepted', { userId: currentUserId });
-    ```
-
-#### 4. Messaging System
-- **Getting Messages** (`getMessages.ts`):
-  - **Input**: Conversation ID or user ID
-  - **Process**: Find or create conversation, fetch messages
-  - **Output**: Message history
-  - **Implementation Details**:
-    - Queries conversation collection by participants
-    - Sorts messages by timestamp
-    - Updates read status for incoming messages
-    - Uses pagination for efficient loading
-
-- **Sending Messages** (`sendMessage.ts`):
-  - **Input**: Recipient ID, message content
-  - **Process**: 
-    1. Create message record
-    2. Update conversation
-    3. Emit socket event to recipient
-  - **Output**: Created message data
-  - **Implementation Details**:
-    ```typescript
-    // Create or update conversation
-    let conversation = await Conversation.findOne({
-      participants: { $all: [senderId, recipientId] }
-    });
-    
-    if (!conversation) {
-      conversation = new Conversation({
-        participants: [senderId, recipientId],
-        lastMessage: { content, timestamp: new Date() }
-      });
-      await conversation.save();
-    }
-    
-    // Create message
-    const message = new Message({
-      conversationId: conversation._id,
-      sender: senderId,
-      recipient: recipientId,
-      content,
-      read: false,
-    });
-    await message.save();
-    
-    // Update conversation with last message
-    conversation.lastMessage = { content, timestamp: new Date() };
-    await conversation.save();
-    
-    // Send real-time notification
-    socketService.emitToUser(recipientId, 'newMessage', {
-      message,
-      sender: senderId
-    });
-    ```
-
-### Spotify Integration Details
-
-#### Service Class Implementation (`spotify.ts`)
-- **Core Methods**:
-  - `getAuthUrl()`: Generates OAuth URL with required scopes
-  - `getAccessToken(code)`: Exchanges code for access token
-  - `refreshAccessToken(refreshToken)`: Refreshes expired tokens
-  - `getUserProfile(accessToken)`: Gets basic user info
-  - `getTopTracks(accessToken, timeRange, limit)`: Gets user's top tracks with time range option
-  - `getTopArtists(accessToken, timeRange, limit)`: Gets user's top artists
-  - `getUserPlaylists(accessToken, limit)`: Gets user's playlists
-  - `getRecentlyPlayed(accessToken, limit)`: Gets recently played tracks
-  - `getCurrentTrack(accessToken)`: Gets currently playing track
-  - `getAudioFeatures(accessToken, trackIds)`: Gets audio features for tracks
-  - `getTopGenres(accessToken)`: Analyzes top genres from artists
-
-- **Data Processing**:
-  - `formatTrack(track)`: Transforms Spotify track format to internal model
-  - `formatArtist(artist)`: Transforms Spotify artist format to internal model
-  - `calculateGenreWeights(artists)`: Calculates genre weights from artist data
-
-#### Music Profile Analysis
-
-The system analyzes various audio features from a user's listening history:
-- **Energy**: How energetic the music is
-- **Valence**: The musical positiveness (happy, cheerful vs. sad, angry)
-- **Danceability**: How suitable the track is for dancing
-- **Acousticness**: The measure of acoustic elements vs. electronic
-- **Instrumentalness**: The measure of vocal vs. instrumental content
-- **Tempo**: The pace of the track
-
-These features are used to create a musical "fingerprint" for each user, which helps in matching with similar users.
-
-### Error Handling and Middleware
-
-#### Error Handler (`errorHandler.ts`)
-- Centralized error handling middleware
-- Formats errors consistently
-- Handles different error types (validation, authentication, etc.)
-- Logs errors for monitoring
+The system now automatically synchronizes Spotify data during the authentication process, eliminating the need for separate API calls to fetch user music data. This is implemented in the `getCallback.ts` file:
 
 ```typescript
-export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
-  const statusCode = err.statusCode || 500;
-  console.error(err.stack);
-  
-  res.status(statusCode).json({
-    error: err.message || 'Internal Server Error',
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
-  });
-};
-
-export const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
-};
-```
-
-#### Rate Limiting (`rateLimiter.ts`)
-- Protects against brute force attacks
-- Limits request frequency
-- Different limits for different endpoints
-- Uses Redis for distributed rate limiting
-
-### Socket Communication Events
-
-#### Client to Server Events
-- `connection`: User connects to socket server
-- `disconnect`: User disconnects
-- `joinConversation`: User joins a conversation room
-- `leaveConversation`: User leaves a conversation room
-- `typing`: User is typing
-- `stopTyping`: User stopped typing
-- `readMessages`: User read messages
-
-#### Server to Client Events
-- `getOnlineUsers`: List of online users
-- `newMessage`: New message notification
-- `messageRead`: Message read receipt
-- `userTyping`: User typing indicator
-- `newFriendRequest`: Friend request notification
-- `friendRequestAccepted`: Friend request accepted notification
-
-### Advanced Features
-
-#### Caching Strategy
-- Redis is used for caching frequently accessed data
-- Cache invalidation on data updates
-- TTL-based cache expiration
-- Distributed cache for horizontal scaling
-
-#### Database Indexing
-- Strategic indexes for frequently queried fields
-- Compound indexes for complex queries
-- Text indexes for search functionality
-
-#### Connection Pooling
-- MongoDB connection pooling for efficiency
-- Connection retry mechanisms
-- Health checking
-
-## API Input/Output Examples
-
-### Authentication
-- **Endpoint**: `GET /spotify/callback`
-- **Input**: `code` query parameter from Spotify OAuth
-- **Output**:
-```json
-// Redirect to frontend with:
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "needsUsername": true
-}
-```
-
-### Profile
-- **Endpoint**: `GET /profile/me`
-- **Input**: JWT token in Authorization header
-- **Output**:
-```json
-{
-  "user": {
-    "id": "60a1b2c3d4e5f6g7h8i9j0k",
-    "spotifyId": "spotify_user_id",
-    "displayName": "John Doe",
-    "username": "johndoe",
-    "profilePicture": "https://...",
-    "hasCompletedOnboarding": true
-  }
-}
-```
-
-### Music Profile
-- **Endpoint**: `GET /spotify/profile`
-- **Input**: JWT token in Authorization header
-- **Output**:
-```json
-{
-  "musicProfile": {
-    "topArtists": [
-      {
-        "spotifyId": "4tZwfgrHOc3mvqYlEYSvVi",
-        "name": "Daft Punk",
-        "genres": ["french house", "electro"],
-        "popularity": 82
-      }
-      // More artists...
-    ],
-    "topTracks": [
-      {
-        "spotifyId": "0DiWol3AO6WpXZgp0goxAV",
-        "name": "Get Lucky",
-        "artists": [
-          {
-            "spotifyId": "4tZwfgrHOc3mvqYlEYSvVi",
-            "name": "Daft Punk"
-          }
-        ],
-        "album": {
-          "spotifyId": "2CJnMhwEEkS8R1ctgt5llf",
-          "name": "Random Access Memories"
-        }
-      }
-      // More tracks...
-    ],
-    "topGenres": [
-      { "name": "pop", "weight": 0.8 },
-      { "name": "rock", "weight": 0.5 },
-      { "name": "indie", "weight": 0.3 }
-    ],
-    "audioFeatures": {
-      "danceability": 0.72,
-      "energy": 0.65,
-      "valence": 0.58,
-      "tempo": 116,
-      "acousticness": 0.25,
-      "instrumentalness": 0.12
+// src/functions/getCallback.ts
+export const getCallback = async (req: Request, res: Response) => {
+  try {
+    const { code } = req.query;
+    
+    // Exchange code for access token
+    const tokenData = await spotify.getAccessToken(code as string);
+    
+    // Fetch user profile
+    const userProfile = await spotify.getUserProfile(tokenData.access_token);
+    
+    // Find or create user
+    let user = await User.findOne({ spotifyId: userProfile.id });
+    if (!user) {
+      // Create new user...
     }
-  }
-}
-```
-
-### Friend Requests
-- **Endpoint**: `GET /requests`
-- **Input**: JWT token in Authorization header
-- **Output**:
-```json
-{
-  "incoming": [
-    {
-      "id": "60a1b2c3d4e5f6g7h8i9j0k",
-      "username": "user123",
-      "displayName": "User 123",
-      "profilePicture": "https://...",
-      "requestId": "req_123456"
-    }
-  ],
-  "outgoing": [
-    {
-      "id": "70a1b2c3d4e5f6g7h8i9j0k",
-      "username": "user456",
-      "displayName": "User 456",
-      "profilePicture": "https://...",
-      "requestId": "req_789012"
-    }
-  ]
-}
-```
-
-### Authentication Check
-- **Endpoint**: `GET /auth/check`
-- **Input**: JWT token in Authorization header
-- **Output**:
-```json
-{
-  "exists": true,
-  "userId": "60a1b2c3d4e5f6g7h8i9j0k"
-}
-```
-
-## Security Considerations
-
-### Authentication Security
-- **JWT Tokens**:
-  - Short-lived access tokens (1 hour)
-  - Longer-lived refresh tokens (30 days)
-  - Tokens signed with secure algorithm
-  - Different secrets for access and refresh tokens
-  
-- **Cookie Security**:
-  - HTTP-only cookies to prevent XSS attacks
-  - Secure flag in production
-  - SameSite policy
-  - CSRF protection
-
-### API Security
-- **CORS Configuration**:
-  - Restricted origins
-  - Allowed methods and headers
-  - Credentials handling
-
-- **Input Validation**:
-  - Request body validation
-  - Parameter sanitization
-  - MongoDB query injection protection
-
-### Rate Limiting
-- **Implementation**:
-  ```typescript
-  // Example from rateLimiter.ts
-  const limiter = rateLimit({
-    windowMs: config.rateLimit.windowMs as number,
-    max: config.rateLimit.max as number,
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => req.ip || 'unknown',
-    handler: (req, res) => {
-      res.status(429).json({
-        error: 'Too many requests, please try again later.'
+    
+    // Automatically sync Spotify data during login
+    syncUserSpotifyData(user._id.toString(), tokenData.access_token)
+      .then(syncResults => {
+        console.log('Initial data sync completed during login:', syncResults);
+      })
+      .catch(error => {
+        console.error('Error during initial Spotify data sync:', error);
       });
-    }
-  });
-  ```
-
-### Data Protection
-- Password-less authentication via Spotify OAuth
-- Database field encryption for sensitive data
-- No storage of Spotify access tokens (only refreshed when needed)
-
-## Error Response Formats
-
-### Standard Error Format
-```json
-{
-  "error": "Error message",
-  "details": {
-    // Additional error details (when available)
+    
+    // Generate tokens and redirect
+    const token = generateToken({ id: user._id, spotifyId: user.spotifyId }, res);
+    
+    // Redirect to frontend with tokens
+    return res.redirect(`${config.frontendUrl}/auth/callback?token=${token}&needsUsername=${!user.username}`);
+  } catch (error) {
+    console.error('Error in Spotify callback:', error);
+    return res.redirect(`${config.frontendUrl}/auth/error`);
   }
+};
+```
+
+### 2. Reusable Spotify Data Synchronization Function
+
+The core functionality for syncing Spotify data is now extracted into a reusable function that can be called both during authentication and manually through the API:
+
+```typescript
+// src/functions/spotify/syncSpotifyData.ts
+export const syncUserSpotifyData = async (
+    userId: string,
+    accessToken: string
+): Promise<any> => {
+    try {
+        console.log('Starting Spotify data sync for user:', userId);
+
+        const user = await User.findById(userId);
+        if (!user) {
+            throw new Error('User not found');
+        }
+
+        // Find existing music profile or create a new one
+        let musicProfile;
+        if (user.musicProfile) {
+            // Try to find existing profile
+            musicProfile = await MusicProfile.findById(user.musicProfile);
+        }
+
+        if (!musicProfile) {
+            // Create new music profile if none exists
+            musicProfile = new MusicProfile({
+                spotifyConnected: true,
+                spotifyAccessToken: accessToken,
+                spotifyTokenExpiresAt: new Date(Date.now() + 3600 * 1000), // Default 1 hour
+                topArtists: {
+                    short_term: [],
+                    medium_term: [],
+                    long_term: []
+                },
+                topTracks: {
+                    short_term: [],
+                    medium_term: [],
+                    long_term: []
+                },
+                recentTracks: [],
+                playlists: [],
+                topGenres: [],
+                audioFeatures: {
+                    danceability: 0,
+                    energy: 0,
+                    key: 0,
+                    mode: 0,
+                    speechiness: 0,
+                    acousticness: 0,
+                    instrumentalness: 0,
+                    liveness: 0,
+                    valence: 0,
+                    tempo: 0,
+                    duration: 0,
+                    timeSignature: 0,
+                    loudness: 0
+                },
+                lastSyncAt: new Date(),
+                compatibilityScore: new Map<string, number>(),
+                recentlyPlayed: []
+            });
+
+            // Save the new profile
+            await musicProfile.save();
+            
+            // Link it to the user
+            user.musicProfile = musicProfile._id;
+            await user.save();
+        } else {
+            // Update existing profile
+            musicProfile.spotifyConnected = true;
+            musicProfile.spotifyAccessToken = accessToken;
+            await musicProfile.save();
+        }
+
+        // Fetch all Spotify data in parallel using Promise.allSettled
+        const [
+            topArtistsShort,
+            topArtistsMedium,
+            topArtistsLong,
+            topTracksShort,
+            topTracksMedium,
+            topTracksLong,
+            recentTracks,
+            likedTracks,
+            playlists,
+            currentTrack,
+            topGenres
+        ] = await Promise.allSettled([
+            spotify.getTopArtists(accessToken, 'short_term', 50),
+            spotify.getTopArtists(accessToken, 'medium_term', 50),
+            spotify.getTopArtists(accessToken, 'long_term', 50),
+            spotify.getTopTracks(accessToken, 'short_term', 50),
+            spotify.getTopTracks(accessToken, 'medium_term', 50),
+            spotify.getTopTracks(accessToken, 'long_term', 50),
+            spotify.getRecentlyPlayed(accessToken, 50),
+            spotify.getLikedTracks(accessToken, 50),
+            spotify.getUserPlaylists(accessToken, 50),
+            spotify.getCurrentTrack(accessToken),
+            spotify.getTopGenres(accessToken)
+        ]);
+
+        // Update music profile with fetched data
+        if (topArtistsShort.status === 'fulfilled') {
+            musicProfile.topArtists.short_term = topArtistsShort.value;
+        }
+        if (topArtistsMedium.status === 'fulfilled') {
+            musicProfile.topArtists.medium_term = topArtistsMedium.value;
+        }
+        if (topArtistsLong.status === 'fulfilled') {
+            musicProfile.topArtists.long_term = topArtistsLong.value;
+        }
+
+        if (topTracksShort.status === 'fulfilled') {
+            musicProfile.topTracks.short_term = topTracksShort.value;
+        }
+        if (topTracksMedium.status === 'fulfilled') {
+            musicProfile.topTracks.medium_term = topTracksMedium.value;
+        }
+        if (topTracksLong.status === 'fulfilled') {
+            musicProfile.topTracks.long_term = topTracksLong.value;
+        }
+
+        if (recentTracks.status === 'fulfilled') {
+            musicProfile.recentTracks = recentTracks.value.map(rt => rt.track).slice(0, 50);
+        }
+
+        if (playlists.status === 'fulfilled') {
+            musicProfile.playlists = playlists.value;
+        }
+
+        if (currentTrack.status === 'fulfilled' && currentTrack.value) {
+            musicProfile.currentlyPlaying = currentTrack.value;
+        }
+
+        if (topGenres.status === 'fulfilled') {
+            musicProfile.topGenres = topGenres.value;
+        }
+
+        // Calculate audio features from top tracks
+        try {
+            const allTopTracks = [
+                ...(topTracksShort.status === 'fulfilled' ? topTracksShort.value : []),
+                ...(topTracksMedium.status === 'fulfilled' ? topTracksMedium.value : []),
+                ...(topTracksLong.status === 'fulfilled' ? topTracksLong.value : [])
+            ];
+
+            if (allTopTracks.length > 0) {
+                const uniqueTrackIds = [...new Set(allTopTracks.map(track => track.spotifyId))];
+                const audioFeatures = await spotify.getAudioFeatures(accessToken, uniqueTrackIds.slice(0, 100));
+
+                if (audioFeatures.length > 0) {
+                    const avgFeatures = audioFeatures.reduce((acc, features) => {
+                        Object.keys(features).forEach(key => {
+                            if (typeof features[key as keyof typeof features] === 'number') {
+                                acc[key as keyof typeof acc] = (acc[key as keyof typeof acc] || 0) + 
+                                    (features[key as keyof typeof features] as number);
+                            }
+                        });
+                        return acc;
+                    }, {} as any);
+
+                    Object.keys(avgFeatures).forEach(key => {
+                        avgFeatures[key] = avgFeatures[key] / audioFeatures.length;
+                    });
+
+                    musicProfile.audioFeatures = avgFeatures;
+                }
+            }
+        } catch (audioError) {
+            console.error('Error fetching audio features:', audioError);
+        }
+
+        musicProfile.lastSyncAt = new Date();
+        await musicProfile.save();
+
+        return {
+            topArtists: {
+                short_term: topArtistsShort.status === 'fulfilled' ? topArtistsShort.value.length : 0,
+                medium_term: topArtistsMedium.status === 'fulfilled' ? topArtistsMedium.value.length : 0,
+                long_term: topArtistsLong.status === 'fulfilled' ? topArtistsLong.value.length : 0,
+            },
+            topTracks: {
+                short_term: topTracksShort.status === 'fulfilled' ? topTracksShort.value.length : 0,
+                medium_term: topTracksMedium.status === 'fulfilled' ? topTracksMedium.value.length : 0,
+                long_term: topTracksLong.status === 'fulfilled' ? topTracksLong.value.length : 0,
+            },
+            recentTracks: recentTracks.status === 'fulfilled' ? recentTracks.value.length : 0,
+            playlists: playlists.status === 'fulfilled' ? playlists.value.length : 0,
+            topGenres: topGenres.status === 'fulfilled' ? topGenres.value.length : 0,
+            currentTrack: currentTrack.status === 'fulfilled' && currentTrack.value ? true : false,
+            lastSyncAt: musicProfile.lastSyncAt,
+        };
+    } catch (error: any) {
+        console.error('Error in syncUserSpotifyData:', error);
+        throw error;
+    }
+};
+```
+
+### 3. Improved Data Retrieval with Mongoose Population
+
+The endpoints for retrieving Spotify data have been updated to properly handle the reference relationship between User and MusicProfile models:
+
+```typescript
+// src/functions/spotify/getTopArtists.ts
+export const getTopArtists = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user._id;
+        const { timeRange = 'medium_term' } = req.query;
+
+        // Populate the musicProfile reference
+        const user = await User.findById(userId).populate('musicProfile');
+        
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        // Check if musicProfile exists
+        if (!user.musicProfile) {
+            return res.status(404).json({ error: "Music profile not found" });
+        }
+
+        // Check if it's an ObjectId (not populated) or document
+        const isMusicProfilePopulated = 
+            user.musicProfile instanceof mongoose.Types.ObjectId === false &&
+            typeof user.musicProfile !== 'string';
+            
+        if (!isMusicProfilePopulated) {
+            return res.status(500).json({ error: "Failed to load music profile data" });
+        }
+
+        // Now we can safely cast it to IMusicProfile
+        const musicProfile = user.musicProfile as IMusicProfile;
+
+        // Now we can access the populated musicProfile
+        const validTimeRanges = ['short_term', 'medium_term', 'long_term'];
+        const range = validTimeRanges.includes(timeRange as string) ? timeRange as string : 'medium_term';
+
+        // Handle case where topArtists might not exist or be properly initialized
+        const artists = 
+            musicProfile.topArtists && 
+            musicProfile.topArtists[range as keyof typeof musicProfile.topArtists] ? 
+            musicProfile.topArtists[range as keyof typeof musicProfile.topArtists] : [];
+
+        return res.status(200).json({
+            timeRange: range,
+            artists,
+            count: artists.length
+        });
+
+    } catch (error) {
+        console.error('Error fetching top artists:', error);
+        return res.status(500).json({ error: "Failed to fetch top artists" });
+    }
+};
+```
+
+Similar implementations are used for `getTopTracks.ts` and `getTopGenres.ts`.
+
+### 4. Improved Type Handling for Mongoose References
+
+The application now properly handles the relationship between User and MusicProfile models using Mongoose references and TypeScript interfaces:
+
+```typescript
+// src/types/index.ts (excerpt)
+export interface IUser extends Document {
+    // ...other properties
+    
+    // Updated to handle both full documents and references
+    musicProfile: IMusicProfile | mongoose.Types.ObjectId | string;
+    
+    // ...other properties
+}
+
+export interface IMusicProfile {
+    spotifyConnected: boolean;
+    spotifyAccessToken?: string;
+    spotifyRefreshToken?: string;
+    spotifyTokenExpiresAt?: Date;
+
+    currentlyPlaying?: ICurrentTrack;
+    recentTracks: ITrack[];
+    recentlyPlayed: IRecentlyPlayedTrack[];  
+
+    topArtists: {
+        short_term: IArtist[];
+        medium_term: IArtist[];
+        long_term: IArtist[];
+    }
+
+    topTracks: {
+        short_term: ITrack[];
+        medium_term: ITrack[];
+        long_term: ITrack[];
+    };
+
+    topGenres: IGenre[];
+    audioFeatures: IAudioFeatures;
+
+    playlists: IPlaylist[];
+
+    compatibilityScore: Map<string, number>;
+
+    lastSyncAt: Date;
 }
 ```
 
-### Common Error Types
-- **Authentication Errors**:
-  ```json
-  {
-    "error": "Unauthorized",
-    "details": {
-      "reason": "Invalid or expired token"
+### 5. Manual Sync Endpoint Implementation
+
+The manual sync endpoint is still available for cases where users want to refresh their Spotify data outside the authentication flow:
+
+```typescript
+// src/functions/spotify/syncSpotifyData.ts (API endpoint)
+export const syncSpotifyData = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user._id;
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if musicProfile exists and is connected
+        const musicProfile = user.musicProfile ? await MusicProfile.findById(user.musicProfile) : null;
+
+        if (!musicProfile?.spotifyConnected || !musicProfile?.spotifyAccessToken) {
+            return res.status(400).json({ error: 'Spotify not connected' });
+        }
+        
+        let accessToken = musicProfile.spotifyAccessToken;
+
+        // Handle token refresh if expired
+        if (musicProfile.spotifyTokenExpiresAt && musicProfile.spotifyTokenExpiresAt < new Date()) {
+            if (!musicProfile.spotifyRefreshToken) {
+                return res.status(401).json({ error: 'Spotify token expired and no refresh token available' });
+            }
+
+            const refreshedTokens = await spotify.refreshAccessToken(musicProfile.spotifyRefreshToken);
+            accessToken = refreshedTokens.access_token;
+            musicProfile.spotifyAccessToken = refreshedTokens.access_token;
+            musicProfile.spotifyTokenExpiresAt = new Date(Date.now() + refreshedTokens.expires_in * 1000);
+
+            if (refreshedTokens.refresh_token) {
+                musicProfile.spotifyRefreshToken = refreshedTokens.refresh_token;
+            }
+            
+            await musicProfile.save();
+        }
+
+        // Call the shared sync function
+        const syncResults = await syncUserSpotifyData(userId, accessToken);
+
+        return res.status(200).json({ 
+            message: "Spotify data synced successfully",
+            syncResults 
+        });
+    } catch (error: any) {
+        console.error('Error syncing Spotify data:', error);
+        
+        if (error.message === 'SPOTIFY_TOKEN_EXPIRED') {
+            return res.status(401).json({ error: 'Spotify token expired' });
+        }
+        
+        return res.status(500).json({ error: "Failed to sync Spotify data" });
     }
-  }
-  ```
+};
+```
 
-- **Validation Errors**:
-  ```json
-  {
-    "error": "Validation failed",
-    "details": {
-      "field": "username",
-      "message": "Username must be between 3 and 30 characters"
-    }
-  }
-  ```
+## Key Improvements in Spotify Data Handling
 
-- **Resource Not Found**:
-  ```json
-  {
-    "error": "Resource not found",
-    "details": {
-      "resource": "User",
-      "id": "60a1b2c3d4e5f6g7h8i9j0k"
-    }
-  }
-  ```
+### 1. Automatic Synchronization During Authentication
+- Users' Spotify data is now automatically synchronized during the authentication process
+- No need for separate API calls to fetch music data after login
+- Improves user experience by having data ready immediately after login
 
-## Technical Challenges and Solutions
+### 2. Proper Mongoose Reference Handling
+- User and MusicProfile models are now properly linked via Mongoose references
+- Improved type safety with TypeScript interfaces that handle both document and reference types
+- Proper population of referenced documents in API endpoints
 
-### Handling Spotify Rate Limits
-- Implemented request queueing system
-- Cached frequently accessed data
-- Used exponential backoff for retries
+### 3. Robust Error Handling
+- All API endpoints include comprehensive error handling
+- Proper type checking to prevent "undefined is not an object" errors
+- Graceful handling of cases where music profile might not exist
 
-### Real-time Messaging at Scale
-- Used Redis adapter for Socket.IO
-- Implemented message queueing for offline users
-- Designed efficient conversation lookup
+### 4. Parallel Data Fetching
+- Uses Promise.allSettled to fetch multiple data types in parallel
+- Continues processing even if some API calls fail
+- Provides detailed success/failure information for each data type
 
-### Music Taste Analysis and Matching
-- Created algorithm to compare audio features
-- Weighted genre matching system
-- Calculated compatibility scores based on listening habits
+### 5. Token Refresh Mechanism
+- Automatically refreshes expired Spotify tokens
+- Stores new tokens in the database
+- Handles cases where refresh token might not be available
 
-## Database Schema Details
+### 6. Comprehensive Data Collection
+- Fetches a wide range of Spotify data:
+  - Top artists (short, medium, and long term)
+  - Top tracks (short, medium, and long term)
+  - Recent listening history
+  - Playlists
+  - Currently playing track
+  - Audio features analysis
+  - Genre preferences
+
+### 7. Audio Feature Analysis
+- Calculates average audio features from user's top tracks
+- Creates a musical "fingerprint" for each user
+- Used for compatibility matching with other users
+
+## Database Schema Updates
 
 ### User Collection
 ```typescript
 {
   _id: ObjectId,
   spotifyId: String,
-  username: String,
-  displayName: String,
-  firstName: String,
-  lastName: String,
-  profilePicture: String,
-  bio: String,
-  age: Number,
-  gender: String,
-  intrestedIn: [String],
-  city: String,
-  country: String,
-  lastSeen: Date,
-  dailyRolls: {
-    date: Date,
-    count: Number,
-  },
+  // ...other fields
   musicProfile: {
     type: ObjectId,
-    ref: "MusicProfile",
+    ref: "MusicProfile"
   },
-  friends: [String],
-  friendRequests: {
-    incoming: [String],
-    outgoing: [String],
-  },
-  privacySettings: Object,
-  notifications: Object,
-  isPremium: Boolean,
-  isVerified: Boolean,
-  isBanned: Boolean,
-  banReason: String,
-  banExpiresAt: Date,
-  isAdmin: Boolean,
-  hasCompletedOnboarding: Boolean,
-  createdAt: Date,
-  updatedAt: Date,
+  // ...other fields
 }
 ```
 
@@ -644,126 +554,176 @@ export const asyncHandler = (fn: Function) => (req: Request, res: Response, next
 ```typescript
 {
   _id: ObjectId,
-  userId: {
-    type: ObjectId,
-    ref: "User"
+  spotifyConnected: Boolean,
+  spotifyAccessToken: String,
+  spotifyRefreshToken: String,
+  spotifyTokenExpiresAt: Date,
+  
+  topArtists: {
+    short_term: [ArtistSchema],
+    medium_term: [ArtistSchema],
+    long_term: [ArtistSchema]
   },
-  topArtists: [{
-    spotifyId: String,
-    name: String,
-    genres: [String],
-    popularity: Number,
-    images: [{
-      url: String,
-      height: Number,
-      width: Number
-    }]
-  }],
-  topTracks: [{
-    spotifyId: String,
-    name: String,
-    artists: [{
-      spotifyId: String,
-      name: String
-    }],
-    album: {
-      spotifyId: String,
-      name: String,
-      images: [{
-        url: String,
-        height: Number,
-        width: Number
-      }]
-    },
-    popularity: Number
-  }],
-  topGenres: [{
-    name: String,
-    weight: Number
-  }],
-  audioFeatures: {
-    danceability: Number,
-    energy: Number,
-    valence: Number,
-    tempo: Number,
-    acousticness: Number,
-    instrumentalness: Number
+  
+  topTracks: {
+    short_term: [TrackSchema],
+    medium_term: [TrackSchema],
+    long_term: [TrackSchema]
   },
-  recentTracks: [{
-    track: {
-      // Track structure (same as topTracks)
-    },
-    playedAt: Date
-  }],
-  playlists: [{
-    spotifyId: String,
-    name: String,
-    description: String,
-    public: Boolean,
-    collaborative: Boolean,
-    images: [{
-      url: String,
-      height: Number,
-      width: Number
-    }]
-  }],
-  currentlyPlaying: {
-    // Track structure plus:
-    isPlaying: Boolean,
-    progressMs: Number,
-    timestamp: Date
-  },
-  lastSyncAt: Date,
-  spotifyConnected: Boolean
+  
+  topGenres: [GenreSchema],
+  audioFeatures: AudioFeaturesSchema,
+  recentTracks: [TrackSchema],
+  recentlyPlayed: [RecentlyPlayedTrackSchema],
+  playlists: [PlaylistSchema],
+  currentlyPlaying: CurrentTrackSchema,
+  
+  compatibilityScore: Map,
+  lastSyncAt: Date
 }
 ```
 
-### Conversation Collection
-```typescript
+## API Response Examples
+
+### Get Top Artists
+```json
 {
-  _id: ObjectId,
-  participants: [ObjectId], // References User collection
-  lastMessage: {
-    content: String,
-    timestamp: Date
-  },
-  createdAt: Date,
-  updatedAt: Date
+  "timeRange": "medium_term",
+  "artists": [
+    {
+      "spotifyId": "4tZwfgrHOc3mvqYlEYSvVi",
+      "name": "Daft Punk",
+      "genres": ["french house", "electro"],
+      "popularity": 82,
+      "images": [
+        {
+          "url": "https://i.scdn.co/image/ab6761610000e5eb9e3acf1eaf3b8846e836f441",
+          "height": 640,
+          "width": 640
+        }
+      ],
+      "externalUrl": {
+        "spotify": "https://open.spotify.com/artist/4tZwfgrHOc3mvqYlEYSvVi"
+      }
+    }
+  ],
+  "count": 1
 }
 ```
 
-### Message Collection
-```typescript
+### Get Top Tracks
+```json
 {
-  _id: ObjectId,
-  conversationId: {
-    type: ObjectId,
-    ref: "Conversation"
-  },
-  sender: {
-    type: ObjectId,
-    ref: "User"
-  },
-  recipient: {
-    type: ObjectId,
-    ref: "User"
-  },
-  content: String,
-  read: Boolean,
-  readAt: Date,
-  createdAt: Date,
-  updatedAt: Date
+  "timeRange": "medium_term",
+  "tracks": [
+    {
+      "spotifyId": "0DiWol3AO6WpXZgp0goxAV",
+      "name": "Get Lucky",
+      "artists": [
+        {
+          "spotifyId": "4tZwfgrHOc3mvqYlEYSvVi",
+          "name": "Daft Punk"
+        }
+      ],
+      "album": {
+        "spotifyId": "2CJnMhwEEkS8R1ctgt5llf",
+        "name": "Random Access Memories",
+        "albumType": "album",
+        "images": [
+          {
+            "url": "https://i.scdn.co/image/ab67616d0000b273b33d46dfa2635a47eebf63b2",
+            "height": 640,
+            "width": 640
+          }
+        ],
+        "releaseDate": "2013-05-17T00:00:00.000Z"
+      },
+      "duration": 369626,
+      "popularity": 84,
+      "explicit": false,
+      "href": "https://api.spotify.com/v1/tracks/0DiWol3AO6WpXZgp0goxAV",
+      "externalUrl": {
+        "spotify": "https://open.spotify.com/track/0DiWol3AO6WpXZgp0goxAV"
+      }
+    }
+  ],
+  "count": 1
 }
 ```
 
-## Deployment Considerations
-- Environment variables for configuration
-- Separate dev/prod settings
-- Horizontal scaling through Redis adapter
-- Performance monitoring
-- Error logging
-- Database connection pooling
-- Health check endpoints
-- Graceful shutdown handling
-- Container orchestration ready
-- CI/CD pipeline integration
+### Get Top Genres
+```json
+{
+  "genres": [
+    {
+      "name": "pop",
+      "weight": 0.8
+    },
+    {
+      "name": "rock",
+      "weight": 0.5
+    },
+    {
+      "name": "indie",
+      "weight": 0.3
+    }
+  ],
+  "count": 3
+}
+```
+
+### Sync Spotify Data Response
+```json
+{
+  "message": "Spotify data synced successfully",
+  "syncResults": {
+    "topArtists": {
+      "short_term": 50,
+      "medium_term": 50,
+      "long_term": 50
+    },
+    "topTracks": {
+      "short_term": 50,
+      "medium_term": 50,
+      "long_term": 50
+    },
+    "recentTracks": 50,
+    "playlists": 20,
+    "topGenres": 15,
+    "currentTrack": true,
+    "lastSyncAt": "2023-06-15T12:34:56.789Z"
+  }
+}
+```
+
+## Error Handling Examples
+
+### Music Profile Not Found
+```json
+{
+  "error": "Music profile not found"
+}
+```
+
+### Token Expired
+```json
+{
+  "error": "Spotify token expired"
+}
+```
+
+### Failed to Load Music Profile
+```json
+{
+  "error": "Failed to load music profile data"
+}
+```
+
+## Future Improvements
+
+1. **Caching Strategy**: Implement Redis caching for frequently accessed Spotify data to reduce API calls
+2. **Background Job Processing**: Move data synchronization to background job queue for better scalability
+3. **Incremental Updates**: Only fetch and update data that has changed since last sync
+4. **Webhooks**: Implement Spotify webhooks for real-time updates when available
+5. **Offline Mode**: Store essential data for offline access
+6. **Rate Limiting**: Implement more sophisticated rate limiting to prevent Spotify API quota exhaustion

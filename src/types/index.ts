@@ -80,7 +80,7 @@ export interface IMusicProfile {
 
     currentlyPlaying?: ICurrentTrack;
     recentTracks: ITrack[];
-
+    recentlyPlayed: IRecentlyPlayedTrack[];  
 
     topArtists: {
         short_term: IArtist[];
@@ -93,7 +93,6 @@ export interface IMusicProfile {
         medium_term: ITrack[];
         long_term: ITrack[];
     };
-
 
     topGenres: IGenre[];
     audioFeatures: IAudioFeatures;
@@ -195,10 +194,6 @@ export interface IRecentlyPlayedTrack {
         externalUrls: { spotify: string };
         uri: string;
     };
-}
-
-export interface IMusicProfile {
-    recentlyPlayed: IRecentlyPlayedTrack[];  
 }
 
 export interface IGenre {
