@@ -20,6 +20,10 @@ class SocketService {
     return this.userSocketMap.get(userId);
   }
 
+  public getUserSocket(userId: string): string | undefined {
+    return this.userSocketMap.get(userId);
+  }
+
   public addUser(userId: string, socketId: string) {
     this.userSocketMap.set(userId, socketId);
   }

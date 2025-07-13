@@ -2,7 +2,7 @@ import dotenv from "dotenv"
 dotenv.config()
 
 export const config = {
-    port: process.env.PORT || 3000,
+    port: process.env.PORT || 3001,
     db: {
         url: process.env.MONGODB_URI || 'mongodb://localhost:27017/mydatabase',
     },
@@ -27,7 +27,7 @@ export const config = {
         delayMs: process.env.SLOW_DOWN_DELAY_MS || 1000,
     },
     cors: {
-        origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+        origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:3001'],
         methods: process.env.CORS_METHODS || 'GET,HEAD,PUT,PATCH,POST,DELETE',
         allowedHeaders: process.env.CORS_ALLOWED_HEADERS || 'Content-Type,Authorization',
     },

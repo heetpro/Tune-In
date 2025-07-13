@@ -1,0 +1,1282 @@
+# Socket.IO Frontend Implementation Guide for Spotilove
+
+This guide provides a comprehensive implementation of the Spotilove chat system frontend that works with our enhanced Socket.IO backend.
+
+## Socket Initialization
+
+Set up the Socket.IO client with proper reconnection options and authentication:
+
+```typescript
+// src/lib/socket.ts
+import { io, Socket } from 'socket.io-client';
+import { getToken } from './auth'; // Your auth utility for retrieving tokens
+
+let socket: Socket | null = null;
+
+export const initializeSocket = (userId: string) => {
+  if (socket) {
+    socket.disconnect();
+  }
+
+  const token = getToken(); // Get authentication token
+
+  socket = io('http://localhost:3001', {
+    query: { userId },
+    auth: { token },
+    withCredentials: true,
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    timeout: 20000,
+    transports: ['websocket'],
+  });
+
+  // Connection event handling
+  socket.on('connect', () => {
+    console.log('Connected to chat server');
+    // Update connection status in your state management
+  });
+
+  socket.on('connect_error', (error) => {
+    console.error('Connection error:', error);
+    // Show connection error in UI
+  });
+
+  socket.on('disconnect', (reason) => {
+    console.log('Disconnected from chat server:', reason);
+    // Update UI to show disconnected state
+  });
+
+  return socket;
+};
+
+// Get the current socket instance
+export const getSocket = (): Socket => {
+  if (!socket) {
+    throw new Error('Socket not initialized. Call initializeSocket first.');
+  }
+  return socket;
+};
+
+// Disconnect and cleanup
+export const disconnectSocket = () => {
+  if (socket) {
+    socket.disconnect();
+    socket = null;
+  }
+};
+```
+
+## Chat Context Provider
+
+Create a React context provider to manage chat state and socket events:
+
+```typescript
+// src/contexts/ChatContext.tsx
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import { initializeSocket, getSocket, disconnectSocket } from '../lib/socket';
+import { useAuth } from './AuthContext'; // Your authentication context
+
+interface Message {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  text: string;
+  createdAt: Date;
+  isRead: boolean;
+  isDelivered: boolean;
+}
+
+interface ChatContextProps {
+  messages: Record<string, Message[]>; // Keyed by conversationId
+  sendMessage: (receiverId: string, text: string) => Promise<boolean>;
+  markAsRead: (messageId: string, senderId: string) => void;
+  sendTypingIndicator: (conversationId: string, receiverId: string) => void;
+  onlineUsers: string[];
+  typingUsers: Record<string, { userId: string; timestamp: number }>;
+  isConnected: boolean;
+  connectionError: string | null;
+}
+
+const ChatContext = createContext<ChatContextProps | null>(null);
+
+export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const [messages, setMessages] = useState<Record<string, Message[]>>({});
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [typingUsers, setTypingUsers] = useState<Record<string, { userId: string; timestamp: number }>>({});
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  // Initialize socket connection
+  useEffect(() => {
+    if (user?.id) {
+      const socket = initializeSocket(user.id);
+
+      socket.on('connect', () => {
+        setIsConnected(true);
+        setConnectionError(null);
+      });
+
+      socket.on('connect_error', (error) => {
+        setIsConnected(false);
+        setConnectionError(error.message);
+      });
+
+      socket.on('disconnect', () => {
+        setIsConnected(false);
+      });
+
+      // Clean up on unmount
+      return () => {
+        disconnectSocket();
+      };
+    }
+  }, [user?.id]);
+
+  // Listen for messages and other events
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const socket = getSocket();
+
+    // Handle new messages
+    socket.on('new_message', (message) => {
+      setMessages((prevMessages) => {
+        // Create a conversation ID (this can be more sophisticated if needed)
+        const conversationId = user.id === message.senderId
+          ? message.receiverId
+          : message.senderId;
+        
+        // Get existing messages for this conversation or initialize
+        const conversationMessages = prevMessages[conversationId] || [];
+        
+        // Check if message already exists to prevent duplicates
+        if (conversationMessages.some(msg => msg.id === message.id)) {
+          return prevMessages;
+        }
+        
+        // Add new message to conversation
+        return {
+          ...prevMessages,
+          [conversationId]: [
+            ...conversationMessages,
+            {
+              ...message,
+              createdAt: new Date(message.createdAt),
+            },
+          ].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
+        };
+      });
+
+      // If the message is from someone else, mark it as read
+      if (message.senderId !== user.id) {
+        socket.emit('read_message', {
+          messageId: message.id,
+          senderId: message.senderId,
+        });
+      }
+    });
+
+    // Handle read receipts
+    socket.on('message_read', ({ messageId }) => {
+      setMessages((prevMessages) => {
+        const updatedMessages = { ...prevMessages };
+        
+        // Find the message in all conversations and update its read status
+        Object.keys(updatedMessages).forEach((conversationId) => {
+          updatedMessages[conversationId] = updatedMessages[conversationId].map(msg => 
+            msg.id === messageId ? { ...msg, isRead: true } : msg
+          );
+        });
+        
+        return updatedMessages;
+      });
+    });
+
+    // Handle typing indicators
+    socket.on('user_typing', ({ userId, conversationId, timestamp }) => {
+      setTypingUsers(prev => ({
+        ...prev,
+        [conversationId]: { userId, timestamp }
+      }));
+      
+      // Auto clear typing indicator after 2 seconds of inactivity
+      setTimeout(() => {
+        setTypingUsers(prev => {
+          const current = prev[conversationId];
+          if (current && current.timestamp === timestamp) {
+            const updated = { ...prev };
+            delete updated[conversationId];
+            return updated;
+          }
+          return prev;
+        });
+      }, 2000);
+    });
+
+    // Track online users
+    socket.on('getOnlineUsers', (users) => {
+      setOnlineUsers(users);
+    });
+
+    socket.on('user_status_changed', ({ userId, status }) => {
+      setOnlineUsers(prev => {
+        if (status === 'online' && !prev.includes(userId)) {
+          return [...prev, userId];
+        } else if (status === 'offline') {
+          return prev.filter(id => id !== userId);
+        }
+        return prev;
+      });
+    });
+
+    return () => {
+      socket.off('new_message');
+      socket.off('message_read');
+      socket.off('user_typing');
+      socket.off('getOnlineUsers');
+      socket.off('user_status_changed');
+    };
+  }, [user?.id]);
+
+  // Send a message with acknowledgment
+  const sendMessage = useCallback(async (receiverId: string, text: string): Promise<boolean> => {
+    if (!user?.id || !isConnected) return false;
+    
+    try {
+      const socket = getSocket();
+      
+      return new Promise((resolve) => {
+        socket.emit(
+          'send_message',
+          { receiverId, text },
+          (response: { status: string; message?: any }) => {
+            if (response.status === 'ok') {
+              resolve(true);
+            } else {
+              console.error('Failed to send message:', response.message);
+              resolve(false);
+            }
+          }
+        );
+      });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      return false;
+    }
+  }, [user?.id, isConnected]);
+
+  // Mark a message as read
+  const markAsRead = useCallback((messageId: string, senderId: string) => {
+    if (!user?.id || !isConnected) return;
+    
+    try {
+      const socket = getSocket();
+      socket.emit('read_message', { messageId, senderId });
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+    }
+  }, [user?.id, isConnected]);
+
+  // Debounced typing indicator
+  const sendTypingIndicator = useCallback((conversationId: string, receiverId: string) => {
+    if (!user?.id || !isConnected) return;
+    
+    try {
+      const socket = getSocket();
+      socket.emit('typing', { conversationId, receiverId });
+    } catch (error) {
+      console.error('Error sending typing indicator:', error);
+    }
+  }, [user?.id, isConnected]);
+
+  const contextValue = {
+    messages,
+    sendMessage,
+    markAsRead,
+    sendTypingIndicator,
+    onlineUsers,
+    typingUsers,
+    isConnected,
+    connectionError,
+  };
+
+  return <ChatContext.Provider value={contextValue}>{children}</ChatContext.Provider>;
+};
+
+// Custom hook for using the chat context
+export const useChat = () => {
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error('useChat must be used within a ChatProvider');
+  }
+  return context;
+};
+```
+
+## Chat Components
+
+### Chat List
+
+Create a component to display all conversations:
+
+```typescript
+// src/components/ChatList.tsx
+import React, { useEffect, useState } from 'react';
+import { useChat } from '../contexts/ChatContext';
+import { useAuth } from '../contexts/AuthContext';
+import { fetchAllConversations } from '../services/chatService'; // Your API service
+
+interface Conversation {
+  id: string;
+  participantId: string; // The other user's ID
+  participantName: string;
+  participantAvatar: string;
+  lastMessage: string;
+  lastMessageTime: Date;
+  unreadCount: number;
+}
+
+const ChatList: React.FC = () => {
+  const { user } = useAuth();
+  const { messages, onlineUsers } = useChat();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+
+  // Fetch conversations from API
+  useEffect(() => {
+    const loadConversations = async () => {
+      if (user?.id) {
+        const data = await fetchAllConversations();
+        setConversations(data);
+      }
+    };
+    
+    loadConversations();
+  }, [user?.id]);
+
+  // Update conversations with latest messages
+  useEffect(() => {
+    setConversations(prev => {
+      const updated = [...prev];
+      
+      // Update each conversation with latest message info
+      Object.entries(messages).forEach(([conversationId, msgs]) => {
+        const conversationIndex = updated.findIndex(
+          c => c.participantId === conversationId
+        );
+        
+        if (conversationIndex >= 0 && msgs.length > 0) {
+          const lastMsg = msgs[msgs.length - 1];
+          const unreadCount = msgs.filter(
+            m => m.senderId !== user?.id && !m.isRead
+          ).length;
+          
+          updated[conversationIndex] = {
+            ...updated[conversationIndex],
+            lastMessage: lastMsg.text,
+            lastMessageTime: lastMsg.createdAt,
+            unreadCount,
+          };
+        }
+      });
+      
+      // Sort by most recent message
+      return updated.sort(
+        (a, b) => 
+          b.lastMessageTime?.getTime() - a.lastMessageTime?.getTime()
+      );
+    });
+  }, [messages, user?.id]);
+
+  return (
+    <div className="chat-list">
+      <h2>Conversations</h2>
+      <ul>
+        {conversations.map(conversation => (
+          <li 
+            key={conversation.id} 
+            className={conversation.unreadCount > 0 ? 'unread' : ''}
+          >
+            <a href={`/chat/${conversation.participantId}`}>
+              <div className="avatar">
+                <img src={conversation.participantAvatar} alt="" />
+                <span className={`status ${
+                  onlineUsers.includes(conversation.participantId) 
+                    ? 'online' 
+                    : 'offline'
+                }`} />
+              </div>
+              <div className="content">
+                <h4>{conversation.participantName}</h4>
+                <p>{conversation.lastMessage}</p>
+              </div>
+              <div className="meta">
+                {conversation.lastMessageTime && (
+                  <span className="time">
+                    {new Date(conversation.lastMessageTime).toLocaleTimeString(
+                      [], 
+                      { hour: '2-digit', minute: '2-digit' }
+                    )}
+                  </span>
+                )}
+                {conversation.unreadCount > 0 && (
+                  <span className="badge">{conversation.unreadCount}</span>
+                )}
+              </div>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
+export default ChatList;
+```
+
+### Chat Conversation
+
+Create a component for individual conversations:
+
+```typescript
+// src/components/ChatConversation.tsx
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
+import { useChat } from '../contexts/ChatContext';
+import { useAuth } from '../contexts/AuthContext';
+import { fetchUserProfile } from '../services/userService'; // Your API service
+
+interface UserProfile {
+  id: string;
+  name: string;
+  avatar: string;
+}
+
+const ChatConversation: React.FC = () => {
+  const { id: conversationId } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const { 
+    messages, 
+    sendMessage, 
+    markAsRead, 
+    sendTypingIndicator,
+    onlineUsers,
+    typingUsers 
+  } = useChat();
+  
+  const [inputText, setInputText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [participant, setParticipant] = useState<UserProfile | null>(null);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationMessages = messages[conversationId] || [];
+  
+  // Fetch participant info
+  useEffect(() => {
+    const loadParticipantInfo = async () => {
+      if (conversationId) {
+        const profile = await fetchUserProfile(conversationId);
+        setParticipant(profile);
+      }
+    };
+    
+    loadParticipantInfo();
+  }, [conversationId]);
+  
+  // Mark messages as read when viewed
+  useEffect(() => {
+    conversationMessages.forEach(message => {
+      if (message.senderId !== user?.id && !message.isRead) {
+        markAsRead(message.id, message.senderId);
+      }
+    });
+  }, [conversationMessages, markAsRead, user?.id]);
+  
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversationMessages]);
+  
+  // Debounced typing indicator
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputText(e.target.value);
+    if (conversationId) {
+      sendTypingIndicator(conversationId, conversationId);
+    }
+  };
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!inputText.trim() || !conversationId) return;
+    
+    setIsLoading(true);
+    const success = await sendMessage(conversationId, inputText);
+    setIsLoading(false);
+    
+    if (success) {
+      setInputText('');
+    }
+  };
+  
+  const isOnline = participant && onlineUsers.includes(participant.id);
+  const isTyping = conversationId && typingUsers[conversationId]?.userId === participant?.id;
+
+  return (
+    <div className="chat-conversation">
+      {participant ? (
+        <>
+          <div className="chat-header">
+            <div className="user-info">
+              <img src={participant.avatar} alt={participant.name} />
+              <div>
+                <h3>{participant.name}</h3>
+                <span className={`status ${isOnline ? 'online' : 'offline'}`}>
+                  {isOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="messages-container">
+            <div className="messages">
+              {conversationMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`message ${
+                    message.senderId === user?.id ? 'sent' : 'received'
+                  }`}
+                >
+                  <div className="message-content">
+                    <p>{message.text}</p>
+                    <div className="message-meta">
+                      <span className="time">
+                        {message.createdAt.toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                      {message.senderId === user?.id && (
+                        <span className="status">
+                          {message.isRead ? '✓✓' : message.isDelivered ? '✓' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {isTyping && (
+                <div className="typing-indicator">
+                  <span>{participant.name} is typing...</span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+          
+          <form onSubmit={handleSubmit} className="message-input">
+            <input
+              type="text"
+              value={inputText}
+              onChange={handleInput}
+              placeholder="Type a message..."
+              disabled={isLoading}
+            />
+            <button type="submit" disabled={isLoading || !inputText.trim()}>
+              {isLoading ? 'Sending...' : 'Send'}
+            </button>
+          </form>
+        </>
+      ) : (
+        <div className="loading">Loading conversation...</div>
+      )}
+    </div>
+  );
+};
+
+export default ChatConversation;
+```
+
+## Chat Page
+
+Put everything together in a complete chat page:
+
+```typescript
+// src/pages/Chat.tsx
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { ChatProvider } from '../contexts/ChatContext';
+import ChatList from '../components/ChatList';
+import ChatConversation from '../components/ChatConversation';
+
+const Chat: React.FC = () => {
+  return (
+    <ChatProvider>
+      <div className="chat-page">
+        <div className="sidebar">
+          <ChatList />
+        </div>
+        <div className="main-content">
+          <Routes>
+            <Route path="/:id" element={<ChatConversation />} />
+            <Route path="/" element={<div className="no-chat-selected">Select a conversation to start chatting</div>} />
+          </Routes>
+        </div>
+      </div>
+    </ChatProvider>
+  );
+};
+
+export default Chat;
+```
+
+## CSS Styling
+
+Add styles for your chat components:
+
+```css
+/* src/styles/chat.css */
+.chat-page {
+  display: flex;
+  height: 100%;
+  min-height: 500px;
+}
+
+.sidebar {
+  width: 320px;
+  border-right: 1px solid #e0e0e0;
+  background-color: #f8f8f8;
+  overflow-y: auto;
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+}
+
+/* Chat List */
+.chat-list h2 {
+  padding: 20px;
+  margin: 0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.chat-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.chat-list li {
+  border-bottom: 1px solid #eaeaea;
+  transition: background-color 0.2s;
+}
+
+.chat-list li:hover {
+  background-color: #f0f0f0;
+}
+
+.chat-list li.unread a h4 {
+  font-weight: 700;
+}
+
+.chat-list li a {
+  display: flex;
+  padding: 15px 20px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.chat-list .avatar {
+  position: relative;
+  margin-right: 15px;
+}
+
+.chat-list .avatar img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.chat-list .avatar .status {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+
+.chat-list .avatar .status.online {
+  background-color: #4caf50;
+}
+
+.chat-list .avatar .status.offline {
+  background-color: #9e9e9e;
+}
+
+.chat-list .content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.chat-list .content h4 {
+  margin: 0 0 5px 0;
+  font-size: 16px;
+}
+
+.chat-list .content p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-list .meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  min-width: 55px;
+}
+
+.chat-list .meta .time {
+  color: #999;
+  font-size: 12px;
+}
+
+.chat-list .meta .badge {
+  background-color: #1976d2;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+/* Chat Conversation */
+.chat-conversation {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.chat-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #fff;
+}
+
+.chat-header .user-info {
+  display: flex;
+  align-items: center;
+}
+
+.chat-header .user-info img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-right: 15px;
+  object-fit: cover;
+}
+
+.chat-header .user-info h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.chat-header .user-info .status {
+  font-size: 14px;
+  color: #666;
+}
+
+.chat-header .user-info .status.online {
+  color: #4caf50;
+}
+
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background-color: #f5f5f5;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+}
+
+.message {
+  margin-bottom: 15px;
+  display: flex;
+}
+
+.message.sent {
+  justify-content: flex-end;
+}
+
+.message-content {
+  max-width: 70%;
+  padding: 10px 15px;
+  border-radius: 18px;
+  position: relative;
+}
+
+.message.sent .message-content {
+  background-color: #1976d2;
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.message.received .message-content {
+  background-color: white;
+  color: #333;
+  border-bottom-left-radius: 4px;
+}
+
+.message-content p {
+  margin: 0;
+  word-wrap: break-word;
+}
+
+.message-meta {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 5px;
+  text-align: right;
+}
+
+.typing-indicator {
+  font-style: italic;
+  color: #666;
+  padding: 5px 0;
+}
+
+.message-input {
+  display: flex;
+  padding: 15px 20px;
+  background-color: #fff;
+  border-top: 1px solid #e0e0e0;
+}
+
+.message-input input {
+  flex: 1;
+  padding: 10px 15px;
+  border: 1px solid #ddd;
+  border-radius: 24px;
+  outline: none;
+  font-size: 14px;
+}
+
+.message-input button {
+  margin-left: 10px;
+  padding: 0 20px;
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  border-radius: 24px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.message-input button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.no-chat-selected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #999;
+  font-size: 16px;
+}
+```
+
+## App Integration
+
+Update your main app file to incorporate the chat functionality:
+
+```typescript
+// src/App.tsx
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ChatProvider } from './contexts/ChatContext';
+import Chat from './pages/Chat';
+import Login from './pages/Login';
+import NotFound from './pages/NotFound';
+import './styles/chat.css';
+
+// Protected route component
+const ProtectedRoute = ({ element }: { element: React.ReactNode }) => {
+  const { user, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+  
+  if (!user) {
+    return <Navigate to="/login" />;
+  }
+  
+  return <>{element}</>;
+};
+
+const AppContent = () => {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route 
+        path="/chat/*" 
+        element={
+          <ProtectedRoute 
+            element={
+              <ChatProvider>
+                <Chat />
+              </ChatProvider>
+            } 
+          />
+        } 
+      />
+      <Route path="/" element={<Navigate to="/chat" />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+};
+
+const App = () => {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </BrowserRouter>
+  );
+};
+
+export default App;
+```
+
+## Additional Features to Consider
+
+### Message Persistence
+
+If you want to handle offline message persistence:
+
+```typescript
+// In your ChatContext.tsx, add local storage for messages
+const saveMessagesToStorage = (userId: string, messages: Record<string, Message[]>) => {
+  try {
+    localStorage.setItem(`chat_messages_${userId}`, JSON.stringify(messages));
+  } catch (error) {
+    console.error('Error saving messages to storage:', error);
+  }
+};
+
+const loadMessagesFromStorage = (userId: string): Record<string, Message[]> => {
+  try {
+    const stored = localStorage.getItem(`chat_messages_${userId}`);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      
+      // Convert date strings back to Date objects
+      Object.keys(parsed).forEach(conversationId => {
+        parsed[conversationId] = parsed[conversationId].map((msg: any) => ({
+          ...msg,
+          createdAt: new Date(msg.createdAt)
+        }));
+      });
+      
+      return parsed;
+    }
+  } catch (error) {
+    console.error('Error loading messages from storage:', error);
+  }
+  return {};
+};
+
+// In useEffect:
+useEffect(() => {
+  if (user?.id) {
+    // Initialize messages from storage when component mounts
+    setMessages(loadMessagesFromStorage(user.id));
+  }
+}, [user?.id]);
+
+// Save messages to storage when they change
+useEffect(() => {
+  if (user?.id) {
+    saveMessagesToStorage(user.id, messages);
+  }
+}, [messages, user?.id]);
+```
+
+### Notification Sounds
+
+Add sound notifications for new messages:
+
+```typescript
+// src/lib/notification.ts
+const newMessageSound = new Audio('/sounds/notification.mp3');
+
+export const playNewMessageSound = () => {
+  newMessageSound.play().catch(error => {
+    console.error('Error playing notification sound:', error);
+  });
+};
+
+// In your ChatContext.tsx
+import { playNewMessageSound } from '../lib/notification';
+
+// In the new_message event handler
+socket.on('new_message', (message) => {
+  // Update messages state...
+  
+  // Play sound if the message is from someone else and the app is not focused
+  if (message.senderId !== user.id && document.visibilityState !== 'visible') {
+    playNewMessageSound();
+  }
+});
+```
+
+### Seen Indicators
+
+Enhance read receipts to show when messages were seen:
+
+```typescript
+// In your ChatConversation.tsx
+import { useInView } from 'react-intersection-observer';
+
+const MessageItem = ({ message, currentUserId }) => {
+  const { markAsRead } = useChat();
+  const { ref, inView } = useInView({
+    threshold: 0.5,
+    triggerOnce: true,
+  });
+  
+  // Mark as read when the message comes into view
+  useEffect(() => {
+    if (inView && message.senderId !== currentUserId && !message.isRead) {
+      markAsRead(message.id, message.senderId);
+    }
+  }, [inView, message, markAsRead, currentUserId]);
+  
+  return (
+    <div 
+      ref={message.senderId !== currentUserId ? ref : undefined}
+      className={`message ${message.senderId === currentUserId ? 'sent' : 'received'}`}
+    >
+      {/* Message content */}
+    </div>
+  );
+};
+```
+
+### Connection Status Indicator
+
+Add a visual indicator for connection status:
+
+```tsx
+// src/components/ConnectionStatus.tsx
+import React from 'react';
+import { useChat } from '../contexts/ChatContext';
+
+const ConnectionStatus: React.FC = () => {
+  const { isConnected, connectionError } = useChat();
+  
+  if (isConnected) {
+    return null; // Don't show anything when connected
+  }
+  
+  return (
+    <div className="connection-status">
+      <div className="connection-error">
+        {connectionError ? 
+          `Connection error: ${connectionError}` : 
+          'Disconnected. Attempting to reconnect...'}
+      </div>
+    </div>
+  );
+};
+
+export default ConnectionStatus;
+
+// Add to your CSS:
+.connection-status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background-color: #f44336;
+  color: white;
+  text-align: center;
+  padding: 5px 10px;
+  font-size: 14px;
+  z-index: 1000;
+}
+```
+
+## Deploying to Production
+
+When deploying to production:
+
+1. **Update Socket.IO URL**: Replace hardcoded URLs with environment variables:
+
+```typescript
+const socket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:3001', {
+  // options
+});
+```
+
+2. **Enable Secure WebSockets**: Use WSS protocol in production:
+
+```typescript
+const isProduction = process.env.NODE_ENV === 'production';
+const socketUrl = isProduction 
+  ? 'https://api.yourdomain.com' 
+  : 'http://localhost:3001';
+
+const socket = io(socketUrl, {
+  transports: ['websocket'],
+  // other options
+});
+```
+
+3. **Error Tracking**: Add comprehensive error tracking:
+
+```typescript
+socket.on('connect_error', (error) => {
+  console.error('Connection error:', error);
+  // Log to your error tracking service
+  errorTrackingService.captureException(error);
+});
+```
+
+## Performance Tips
+
+1. **Pagination**: For large conversations, implement pagination:
+
+```typescript
+const loadMoreMessages = async (conversationId: string, before: Date) => {
+  const olderMessages = await fetchMessages(conversationId, { before, limit: 20 });
+  
+  setMessages(prev => ({
+    ...prev,
+    [conversationId]: [
+      ...olderMessages,
+      ...prev[conversationId]
+    ]
+  }));
+};
+```
+
+2. **Virtualized Lists**: For better performance with long message lists, use virtualization:
+
+```tsx
+import { FixedSizeList } from 'react-window';
+
+// In your ChatConversation component
+const MessageList = ({ messages }) => (
+  <FixedSizeList
+    height={500}
+    itemCount={messages.length}
+    itemSize={70}
+    width="100%"
+  >
+    {({ index, style }) => (
+      <div style={style}>
+        <MessageItem message={messages[index]} />
+      </div>
+    )}
+  </FixedSizeList>
+);
+```
+
+3. **Debouncing Input**: Debounce typing indicators to reduce network traffic:
+
+```typescript
+import { debounce } from 'lodash';
+
+const debouncedTypingIndicator = debounce((conversationId, receiverId) => {
+  const socket = getSocket();
+  socket.emit('typing', { conversationId, receiverId });
+}, 500);
+```
+
+## Testing
+
+For testing your Socket.IO frontend:
+
+```typescript
+// src/__tests__/ChatContext.test.tsx
+import { render, screen, waitFor, act } from '@testing-library/react';
+import { ChatProvider, useChat } from '../contexts/ChatContext';
+import { Socket } from 'socket.io-client';
+
+// Mock socket.io-client
+jest.mock('socket.io-client', () => {
+  const mockSocket = {
+    on: jest.fn(),
+    off: jest.fn(),
+    emit: jest.fn(),
+    connect: jest.fn(),
+    disconnect: jest.fn(),
+  };
+  
+  return {
+    io: jest.fn(() => mockSocket),
+  };
+});
+
+// Mock auth context
+jest.mock('../contexts/AuthContext', () => ({
+  useAuth: jest.fn(() => ({
+    user: { id: 'test-user-id' },
+  })),
+}));
+
+describe('ChatContext', () => {
+  it('initializes socket connection', async () => {
+    const TestComponent = () => {
+      const { isConnected } = useChat();
+      return <div data-testid="connection-status">{isConnected ? 'connected' : 'disconnected'}</div>;
+    };
+    
+    render(
+      <ChatProvider>
+        <TestComponent />
+      </ChatProvider>
+    );
+    
+    expect(screen.getByTestId('connection-status')).toHaveTextContent('disconnected');
+    
+    // Simulate connection
+    const mockSocket = require('socket.io-client').io();
+    act(() => {
+      const connectHandler = mockSocket.on.mock.calls.find(call => call[0] === 'connect')[1];
+      connectHandler();
+    });
+    
+    await waitFor(() => {
+      expect(screen.getByTestId('connection-status')).toHaveTextContent('connected');
+    });
+  });
+  
+  // Add more tests for message sending, receiving, etc.
+});
+```
+
+This comprehensive implementation guide provides all the necessary components and functionality to build a robust chat system with your enhanced Socket.IO backend. The code is designed to be maintainable, scalable, and provides a great user experience with features like typing indicators, read receipts, and online status tracking. 

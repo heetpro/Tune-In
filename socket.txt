@@ -1,1 +1,388 @@
-hello
+# Socket.IO Implementation Guide for Spotilove Backend
+
+## Socket Setup and Configuration
+
+The backend uses Socket.IO with Redis for scalable and reliable real-time communication. Socket.IO is initialized in `server.ts` with optimized settings:
+
+```typescript
+// Redis client setup
+const redisClient = createClient({
+  url: `redis://${config.redis.host}:${config.redis.port}`
+});
+
+// Socket.IO server with optimized configuration
+const io = new Server(server, {
+  cors: {
+    origin: config.cors.origin,
+    credentials: true,
+  },
+  adapter: createAdapter(redisClient),
+  transports: ['websocket'], // Prefer WebSocket over polling
+  pingTimeout: 5000,  // Disconnect if no pong received in 5s
+  pingInterval: 10000, // Send ping every 10s to keep connection alive
+});
+
+socketService.setIO(io);
+```
+
+Key optimizations:
+- `pingInterval: 10000` - Sends ping every 10s to keep connection alive
+- `pingTimeout: 5000` - Disconnects if no pong received in 5s
+- `transports: ['websocket']` - Prefers WebSocket transport for better performance
+- Redis adapter ensures scalability across multiple server instances
+
+## Authentication Middleware
+
+All socket connections go through enhanced authentication middleware:
+
+```typescript
+io.use(async (socket: CustomSocket, next) => {
+  try {
+    socket.compress(true); // Enable compression
+    await middleware(socket, next); // Validate JWT and attach user info
+  } catch (error: any) {
+    console.error('Socket authentication failed:', error.message);
+    next(new Error('Authentication error'));
+  }
+});
+```
+
+The middleware validates the user's token from:
+- Cookie authentication
+- Token in auth object
+- Token in handshake query
+
+## Advanced Connection Management with Rooms
+
+User-specific rooms are used for efficient event targeting:
+
+```typescript
+io.on('connection', (socket: CustomSocket) => {
+  console.log('User connected:', socket.id);
+
+  const userId = socket.handshake.query.userId as string;
+  if (!userId) {
+    console.log('No userId provided, disconnecting socket', socket.id);
+    socket.disconnect();
+    return;
+  }
+
+  // Join user-specific room
+  socket.join(userId);
+  socketService.addUser(userId, socket.id);
+
+  // Notify all clients of updated online users
+  io.emit('user_status_changed', { userId, status: 'online' });
+  
+  // Also send the full list for initial state
+  socketService.emitToAll('getOnlineUsers', socketService.getOnlineUsers());
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+    if (userId) {
+      socketService.removeUser(userId);
+      io.emit('user_status_changed', { userId, status: 'offline' });
+      socketService.emitToAll('getOnlineUsers', socketService.getOnlineUsers());
+    }
+  });
+});
+```
+
+Key features:
+- Each user joins a room with their userId: `socket.join(userId)`
+- Events can target specific users with `io.to(userId).emit()`
+- Efficient delivery of messages and events
+- Automatic status updates when users connect/disconnect
+
+## Available Socket Events
+
+### Messages
+
+1. **send_message**
+   - Sends a new message to a recipient with acknowledgment
+   - Payload: `{ receiverId: string, text: string }`
+   - Response: Callback with `{ status: 'ok' | 'error', message: any }`
+
+```typescript
+socket.on('send_message', async (data, callback) => {
+  try {
+    const { receiverId, text } = data;
+    
+    if (!receiverId || !text || typeof text !== 'string') {
+      return callback?.({ status: 'error', message: 'Invalid message data' });
+    }
+
+    // Here you would normally save the message to database
+    const messageData = {
+      senderId: userId,
+      receiverId,
+      text,
+      isDelivered: socketService.getUserSocket(receiverId) ? true : false,
+      createdAt: new Date()
+    };
+
+    // Emit to recipient if online
+    io.to(receiverId).emit('new_message', messageData);
+    
+    // Emit to sender for confirmation
+    socket.emit('new_message', messageData);
+
+    // Acknowledge successful delivery
+    callback?.({ status: 'ok', message: messageData });
+  } catch (error: any) {
+    console.error('Error sending message:', error);
+    callback?.({ status: 'error', message: 'Failed to send message' });
+  }
+});
+```
+
+2. **new_message**
+   - Emitted when a new message is received
+   - Data: Message object with sender, text, and metadata
+
+3. **read_message**
+   - Marks a message as read and notifies the sender
+   - Payload: `{ messageId: string, senderId: string }`
+
+```typescript
+socket.on('read_message', (data) => {
+  try {
+    const { messageId, senderId } = data;
+    
+    if (senderId) {
+      io.to(senderId).emit('message_read', { messageId });
+    }
+  } catch (error: any) {
+    console.error('Error marking message as read:', error);
+    socket.emit('error', { message: 'Failed to mark message as read' });
+  }
+});
+```
+
+4. **message_read**
+   - Emitted when a message is read by the recipient
+   - Data: `{ messageId: string }`
+
+### Typing Indicators
+
+1. **typing**
+   - Sends typing indicator to recipient
+   - Payload: `{ conversationId: string, receiverId: string }`
+
+```typescript
+socket.on('typing', (data) => {
+  const { conversationId, receiverId } = data;
+  
+  if (receiverId) {
+    io.to(receiverId).emit('user_typing', {
+      userId,
+      conversationId,
+      timestamp: Date.now()
+    });
+  }
+});
+```
+
+2. **user_typing**
+   - Emitted when a user is typing
+   - Data: `{ userId: string, conversationId: string, timestamp: number }`
+
+### Online Status
+
+1. **getOnlineUsers**
+   - Gets all currently online users
+   - No payload required
+   - Server pushes this to all connected clients on connection/disconnection
+
+2. **user_status_changed**
+   - Emitted when a user's status changes
+   - Data: `{ userId: string, status: 'online' | 'offline' }`
+
+## Socket Service Implementation
+
+The backend uses a singleton `socketService` for managing connections:
+
+```typescript
+class SocketService {
+  private io: Server | null = null;
+  private userSocketMap = new Map<string, string>();
+
+  public setIO(io: Server) {
+    this.io = io;
+  }
+
+  public getIO(): Server {
+    if (!this.io) {
+      throw new Error('Socket.IO not initialized');
+    }
+    return this.io;
+  }
+
+  public getReceiverSocketId(userId: string): string | undefined {
+    return this.userSocketMap.get(userId);
+  }
+
+  public getUserSocket(userId: string): string | undefined {
+    return this.userSocketMap.get(userId);
+  }
+
+  public addUser(userId: string, socketId: string) {
+    this.userSocketMap.set(userId, socketId);
+  }
+
+  public removeUser(userId: string) {
+    this.userSocketMap.delete(userId);
+  }
+
+  public getOnlineUsers(): string[] {
+    return Array.from(this.userSocketMap.keys());
+  }
+
+  public emitToUser(userId: string, event: string, data: any) {
+    const socketId = this.getReceiverSocketId(userId);
+    if (socketId && this.io) {
+      this.io.to(socketId).emit(event, data);
+    }
+  }
+
+  public emitToAll(event: string, data: any) {
+    if (this.io) {
+      this.io.emit(event, data);
+    }
+  }
+}
+
+export const socketService = new SocketService();
+```
+
+## Frontend Integration
+
+Integrate with the frontend using reliable connection options:
+
+```typescript
+// Initialize socket with authentication and reconnection options
+const socket = io('http://localhost:3001', {
+  query: { userId: 'your-user-id' },
+  auth: { token: 'your-auth-token' },
+  withCredentials: true,
+  reconnection: true,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 1000,
+  timeout: 20000,
+});
+
+// Listen for connection events
+socket.on('connect', () => {
+  console.log('Connected to socket server');
+  // Update UI to show connected state
+});
+
+socket.on('connect_error', (error) => {
+  console.error('Connection error:', error);
+  // Update UI to show connection error
+});
+
+socket.on('disconnect', () => {
+  console.log('Disconnected from server');
+  // Update UI to show disconnected state
+});
+
+// Send a message with acknowledgment
+socket.emit(
+  'send_message', 
+  {
+    receiverId: 'recipient-user-id',
+    text: 'Hello!'
+  },
+  (response) => {
+    if (response.status === 'ok') {
+      console.log('Message sent successfully', response.message);
+      // Update UI to show message as sent
+    } else {
+      console.error('Failed to send message:', response.message);
+      // Show error in UI
+    }
+  }
+);
+
+// Listen for new messages
+socket.on('new_message', (message) => {
+  console.log('New message received:', message);
+  // Update your UI with the new message
+  // Play notification sound if needed
+});
+
+// Send read receipts
+socket.emit('read_message', {
+  messageId: 'message-id',
+  senderId: 'sender-user-id'
+});
+
+// Listen for read receipts
+socket.on('message_read', (data) => {
+  console.log('Message read:', data.messageId);
+  // Update message status in UI
+});
+
+// Send typing indicator (with debouncing)
+let typingTimer;
+function sendTypingIndicator(conversationId, receiverId) {
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => {
+    socket.emit('typing', { conversationId, receiverId });
+  }, 500);
+}
+
+// Listen for typing indicators
+socket.on('user_typing', (data) => {
+  console.log(`User ${data.userId} is typing in conversation ${data.conversationId}`);
+  // Show typing indicator in UI
+  // Auto-hide after 2 seconds if no new typing event
+  setTimeout(() => {
+    // Hide typing indicator
+  }, 2000);
+});
+
+// Track online users
+socket.on('user_status_changed', (data) => {
+  console.log(`User ${data.userId} is now ${data.status}`);
+  // Update online status in UI
+});
+
+socket.on('getOnlineUsers', (onlineUsers) => {
+  console.log('Online users:', onlineUsers);
+  // Update online status indicators in UI
+});
+
+// Error handling
+socket.on('error', (error) => {
+  console.error('Socket error:', error);
+  // Show error notification in UI
+});
+```
+
+## Error Handling and Reliability Features
+
+The improved implementation includes:
+
+1. **Error Handling**:
+   - Comprehensive try/catch blocks
+   - Error logging with detailed messages
+   - Error events sent to clients
+
+2. **Connection Management**:
+   - Optimized ping/pong settings to detect stale connections
+   - Automatic reconnection strategy
+   - User-specific rooms for efficient message routing
+
+3. **Reliability Features**:
+   - Message acknowledgments confirm delivery
+   - Delivery status tracking (isDelivered flag)
+   - Proper connection state management
+
+4. **Performance Optimizations**:
+   - WebSocket transport preference
+   - Compression enabled
+   - Efficient targeting using rooms
+
+This implementation provides a robust foundation for real-time chat features with high reliability and excellent user experience.
