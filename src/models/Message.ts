@@ -23,7 +23,7 @@ const MessageSchema = new Schema<IMessage>({
     },
     isRead: {
         type: Boolean,
-        required: true,
+        required:  false,
     },
     readAt: {
         type: Date,
@@ -31,7 +31,7 @@ const MessageSchema = new Schema<IMessage>({
     },
     isDelivered: {
         type: Boolean,
-        required: true,
+        required: false,
     },
     deliveredAt: {
         type: Date,
@@ -43,7 +43,7 @@ const MessageSchema = new Schema<IMessage>({
     },
     isDeleted: {
         type: Boolean,
-        required: true,
+        required: false,
     },
 });
 
