@@ -22,7 +22,7 @@
                 text,
                 image: imageUrl,
                 isRead: false,
-                isDelivered: false,
+                isDelivered: true,
                 isDeleted: false
             });
             await newMessage.save();
