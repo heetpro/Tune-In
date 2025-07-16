@@ -146,6 +146,8 @@ try {
       }
     });
 
+    
+
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id);
       if (userId) {
