@@ -40,7 +40,7 @@ export interface IUser extends Document {
         date: Date;
         count: number;
     };
-    // Updated to handle both full documents and references
+
     musicProfile: IMusicProfile | mongoose.Types.ObjectId | string;
     friends: string[];
     friendRequests: {
