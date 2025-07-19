@@ -27,7 +27,6 @@ export interface IUser extends Document {
     
     location: {
         city: string;
-        country: string;
         coordinates: {
             lat: number;
             lng: number;
