@@ -23,9 +23,16 @@ export interface IUser extends Document {
     age: number;
     gender: 'male' | 'female' | 'non-binary' | 'other';
     intrestedIn: ('male' | 'female' | 'non-binary' | 'other')[];
-    city: string;
     spotifyFollowers: number;
-    country: string;
+    
+    location: {
+        city: string;
+        coordinates: {
+            lat: number;
+            lng: number;
+        };
+      };
+    
     lastSeen: Date;
     createdAt: Date;
     updatedAt: Date;
