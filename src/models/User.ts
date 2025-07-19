@@ -51,6 +51,9 @@ export const UserSchema = new Schema<IUser>({
         city: {
             type: String,
         },
+        country: {
+            type: String,
+        },
         coordinates: {
             type: Object,
         },

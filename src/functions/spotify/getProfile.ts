@@ -16,10 +16,15 @@ export const getProfile = async (req: AuthRequest, res: Response) => {
             age: user.age || null,
             gender: user.gender || null,
             intrestedIn: user.intrestedIn || [],
-            city: user.city || '',
-            country: user.country || '',
+            location: user.location || {
+                city: '',
+                country: '',
+                coordinates: {
+                    lat: 0,
+                    lng: 0,
+                },
+            },
             hasCompletedOnboarding: user.hasCompletedOnboarding,
-            isOnline: user.isOnline || false,
             lastSeen: user.lastSeen,
             isPremium: user.isPremium || false,
             isVerified: user.isVerified || false,
