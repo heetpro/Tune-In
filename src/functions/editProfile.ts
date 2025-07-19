@@ -2,12 +2,10 @@ import type { AuthRequest } from "@/middleware/auth";
 import type { Response } from "express";
 
 export const editProfile = async (req: AuthRequest, res: Response) => {
-    const { username, displayName, firstName, lastName, profilePicture, bio, age, gender, intrestedIn, location } = req.body;
+    const { username, displayName, profilePicture, bio, age, gender, intrestedIn, location } = req.body;
     const user = req.user;
     user.username = username;
     user.displayName = displayName;
-    user.firstName = firstName;
-    user.lastName = lastName;
     user.profilePicture = profilePicture;
     user.bio = bio;
     user.age = age;
