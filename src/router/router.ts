@@ -41,6 +41,9 @@ router.get('/spotify/login', (req, res) => {
 router.post('/logout', asyncHandler(getLogout));
 router.get('/spotify/callback', asyncHandler(getCallback));
 router.get('/profile/me', authenticate, asyncHandler(getProfile));
+router.get('/profile/:id', authenticate, asyncHandler(getUserProfile));
+
+
 router.get('/auth/check', authenticate, asyncHandler(checkUserExists));
 router.post('/username', authenticate, asyncHandler(setUsername));
 router.post('/profile/edit', authenticate, asyncHandler(editProfile));
