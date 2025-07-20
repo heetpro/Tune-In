@@ -7,17 +7,18 @@ export const getFriendRequests = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user._id;
 
-        // Get incoming requests
         const incomingRequests = await FriendRequest.find({
             receiverId: userId,
             status: 'pending'
         }).populate('senderId', '_id displayName firstName lastName profilePicture');
 
-        // Get outgoing requests
+
         const outgoingRequests = await FriendRequest.find({
             senderId: userId,
             status: 'pending'
         }).populate('receiverId', '_id displayName firstName lastName profilePicture');
+
+
 
         return res.json({
             incoming: incomingRequests,

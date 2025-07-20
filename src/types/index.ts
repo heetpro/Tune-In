@@ -44,10 +44,6 @@ export interface IUser extends Document {
 
     musicProfile: IMusicProfile | mongoose.Types.ObjectId | string;
     friends: string[];
-    friendRequests: {
-        incoming: string[];
-        outgoing: string[];
-    };
     privacySettings: {
         showAge: boolean;
         showLocation: boolean;
@@ -70,15 +66,15 @@ export interface IUser extends Document {
 }
 
 // Add FriendRequest interface
-export interface IFriendRequest {
-    _id: string;
-    senderId: string;
-    receiverId: string;
-    status: 'pending' | 'accepted' | 'rejected';
-    createdAt: Date;
-    updatedAt: Date;
-    respondedAt?: Date;
-}
+  export interface IFriendRequest {
+      _id: string;
+      senderId: string;
+      receiverId: string;
+      status: 'pending' | 'accepted' | 'rejected';
+      createdAt: Date;
+      updatedAt: Date;
+      respondedAt?: Date;
+  }
 
 export interface IMusicProfile {
     spotifyConnected: boolean;
