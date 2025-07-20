@@ -29,6 +29,8 @@ import { getTopGenres } from "@/functions/spotify/getTopGenres";
 import { getAudioFeatures } from "@/functions/spotify/getAudioFeatures";
 import { checkUserExists } from "@/functions/checkUserExists";
 import { editProfile } from "@/functions/editProfile";
+import { getUserProfile } from "@/functions/user/getUserProfile";
+import { getMyProfile } from "@/functions/spotify/getMyProfile";
 
 const router = Router();
 const spotify = new spotifyService();
@@ -59,7 +61,8 @@ router.post('/messages/send/:id', authenticate, asyncHandler(sendMessage));
 // Note: Initial sync now happens automatically during login
 // This endpoint is for manual refreshes of Spotify data
 router.get('/spotify/sync', authenticate, asyncHandler(syncSpotifyData));
-router.get('/spotify/profile', authenticate, asyncHandler(getMusicProfile));
+router.get('/spotify/profile', authenticate, asyncHandler(getMyProfile));
+router.get('/spotify/profile/:id', authenticate, asyncHandler(getMusicProfile));
 router.get('/spotify/top-artists', authenticate, asyncHandler(getTopArtists));
 router.get('/spotify/top-tracks', authenticate, asyncHandler(getTopTracks));
 router.get('/spotify/recent-tracks', authenticate, asyncHandler(getRecentTracks));

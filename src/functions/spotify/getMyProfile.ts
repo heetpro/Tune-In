@@ -3,19 +3,16 @@ import { User } from "@/models/User";
 import type { Response } from "express";
 import type { IMusicProfile } from "@/types/index";
 
-export const getMusicProfile = async (req: AuthRequest, res: Response) => {
+export const getMyProfile = async (req: AuthRequest, res: Response) => {
     try {
-        const { id } = req.params;
-        console.log("ID:::::::::::::::::::::::::::::::::", id);
+        const userId = req.user._id;
 
-        const user = await User.findById(id)
+        const user = await User.findById(userId)
             .populate('musicProfile')
             .lean();
-
-        console.log("USER:::::::::::::::::::::::::::::::::", user?.displayName);
         
         if (!user) {
-            return res.status(404).json({ error: "User not found" });   
+            return res.status(404).json({ error: "User not found" });
         }
         
         if (!user.musicProfile || typeof user.musicProfile === 'string') {

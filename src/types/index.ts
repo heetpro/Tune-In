@@ -65,7 +65,6 @@ export interface IUser extends Document {
     isAdmin?: boolean; //from spotify
 }
 
-// Add FriendRequest interface
   export interface IFriendRequest {
       _id: string;
       senderId: string;
