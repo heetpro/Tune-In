@@ -1,6 +1,5 @@
 import type { AuthRequest } from "@/middleware/auth";
 import { User } from "@/models/User";
-import FriendRequest from "@/models/FriendRequest";
 import type { Response } from "express";
 
 export const removeFriend = async (req: AuthRequest, res: Response) => {
@@ -14,31 +13,23 @@ export const removeFriend = async (req: AuthRequest, res: Response) => {
         }
 
         const user = await User.findById(userId);
-        if (!user || !user.friends.includes(friendId)) {
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if they are friends
+        if (!user.friends.id.includes(friendId)) {
             return res.status(400).json({ error: 'User is not in your friends list' });
         }
 
+        // Remove from friends lists
         await User.findByIdAndUpdate(userId, {
-            $pull: { friends: friendId }
+            $pull: { 'friends.id': friendId }
         });
 
         await User.findByIdAndUpdate(friendId, {
-            $pull: { friends: userId }
+            $pull: { 'friends.id': userId }
         });
-
-        await FriendRequest.findOneAndUpdate(
-            {
-                $or: [
-                    { senderId: userId, receiverId: friendId },
-                    { senderId: friendId, receiverId: userId }
-                ],
-                status: 'accepted'
-            },
-            {
-                status: 'rejected',
-                updatedAt: new Date()
-            }
-        );
 
         return res.json({ message: 'Friend removed successfully' });
     } catch (error) {

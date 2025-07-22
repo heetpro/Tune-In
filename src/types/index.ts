@@ -11,6 +11,8 @@ export interface CustomSocket extends Socket {
 }
 
 
+
+
 export interface IUser extends Document {
     _id: string;
     spotifyId: string;
@@ -43,7 +45,17 @@ export interface IUser extends Document {
     };
 
     musicProfile: IMusicProfile | mongoose.Types.ObjectId | string;
-    friends: string[];
+    friends: {
+      id: string[];
+    }
+    friendRequests: {
+      incoming: {
+        id: string[];
+      }
+      outgoing: {
+        id: string[];
+      }
+    }
     privacySettings: {
         showAge: boolean;
         showLocation: boolean;
@@ -59,21 +71,12 @@ export interface IUser extends Document {
     hasCompletedOnboarding: boolean;
     isPremium: boolean;
     isVerified: boolean;
-    isBanned: boolean; //from spotify
+    isBanned: boolean; 
     banReason?: string;
     banExpiresAt?: Date;
-    isAdmin?: boolean; //from spotify
+    isAdmin?: boolean; 
 }
 
-  export interface IFriendRequest {
-      _id: string;
-      senderId: string;
-      receiverId: string;
-      status: 'pending' | 'accepted' | 'rejected';
-      createdAt: Date;
-      updatedAt: Date;
-      respondedAt?: Date;
-  }
 
 export interface IMusicProfile {
     spotifyConnected: boolean;

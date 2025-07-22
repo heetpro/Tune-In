@@ -1,9 +1,6 @@
 import type { AuthRequest } from "@/middleware/auth";
 import { User } from "@/models/User";
-import FriendRequest from "@/models/FriendRequest";
-import Match from "@/models/Match";
 import type { Response } from "express";
-import mongoose from "mongoose";
 
 export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
     try {
@@ -38,94 +35,44 @@ export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
 
         // Check if users are already friends
         const senderUser = await User.findById(senderId);
-        if (senderUser?.friends.includes(targetReceiverId)) {
+        if (!senderUser) {
+            return res.status(404).json({ error: 'Sender user not found' });
+        }
+
+        if (senderUser.friends.id.includes(targetReceiverId)) {
             return res.status(400).json({ error: 'Users are already friends' });
         }
 
-        // Check if request already exists
-        const existingRequest = await FriendRequest.findOne({
-            $or: [
-                { senderId: senderId, receiverId: targetReceiverId },
-                { senderId: targetReceiverId, receiverId: senderId }
-            ]
-        });
+        // Check if receiver has already sent a request to the sender
+        if (senderUser.friendRequests.incoming.id.includes(targetReceiverId)) {
+            // Accept the request automatically
+            await User.findByIdAndUpdate(senderId, {
+                $addToSet: { 'friends.id': targetReceiverId },
+                $pull: { 'friendRequests.incoming': targetReceiverId }
+            });
 
-        if (existingRequest) {
-            if (existingRequest.status === 'pending') {
-                // If receiver has already sent a request to sender, accept it automatically
-                if (existingRequest.senderId.toString() === targetReceiverId) {
-                    existingRequest.status = 'accepted';
-                    existingRequest.respondedAt = new Date();
-                    existingRequest.updatedAt = new Date();
-                    await existingRequest.save();
+            await User.findByIdAndUpdate(targetReceiverId, {
+                $addToSet: { 'friends.id': senderId },
+                $pull: { 'friendRequests.outgoing': senderId }
+            });
 
-                    // Update both users' friends lists
-                    await User.findByIdAndUpdate(senderId, {
-                        $addToSet: { friends: targetReceiverId },
-                        $pull: { 'friendRequests.incoming': targetReceiverId }
-                    });
-
-                    await User.findByIdAndUpdate(targetReceiverId, {
-                        $addToSet: { friends: senderId },
-                        $pull: { 'friendRequests.outgoing': senderId }
-                    });
-
-                    return res.json({
-                        message: 'Friend request accepted automatically',
-                        request: existingRequest,
-                        receiver: {
-                            _id: receiverUser._id,
-                            username: receiverUser.username,
-                            displayName: receiverUser.displayName,
-                            profilePicture: receiverUser.profilePicture
-                        }
-                    });
-                } else {
-                    return res.status(400).json({ error: 'Friend request already sent' });
+            return res.json({
+                message: 'Friend request accepted automatically',
+                receiver: {
+                    _id: receiverUser._id,
+                    username: receiverUser.username,
+                    displayName: receiverUser.displayName,
+                    profilePicture: receiverUser.profilePicture
                 }
-            } else if (existingRequest.status === 'accepted') {
-                return res.status(400).json({ error: 'Users are already friends' });
-            } else {
-                // If previously rejected, create new request
-                existingRequest.status = 'pending';
-                existingRequest.updatedAt = new Date();
-                existingRequest.respondedAt = undefined;
-                await existingRequest.save();
-
-                // Update users' friendRequests
-                await User.findByIdAndUpdate(senderId, {
-                    $addToSet: { 'friendRequests.outgoing': targetReceiverId }
-                });
-
-                await User.findByIdAndUpdate(targetReceiverId, {
-                    $addToSet: { 'friendRequests.incoming': senderId }
-                });
-
-                return res.json({
-                    message: 'Friend request sent',
-                    request: existingRequest,
-                    receiver: {
-                        _id: receiverUser._id,
-                        username: receiverUser.username,
-                        displayName: receiverUser.displayName,
-                        profilePicture: receiverUser.profilePicture
-                    }
-                });
-            }
+            });
         }
 
-        // Create new friend request
-        const friendRequest = new FriendRequest({
-            senderId,
-            receiverId: targetReceiverId,
-            status: 'pending',
-            createdAt: new Date(),
-            updatedAt: new Date()
-        });
+        // Check if sender has already sent a request to the receiver
+        if (senderUser.friendRequests.outgoing.id.includes(targetReceiverId)) {
+            return res.status(400).json({ error: 'Friend request already sent' });
+        }
 
-        await friendRequest.save();
-
-        // Update users' friendRequests arrays
+        // Send the friend request by updating both users
         await User.findByIdAndUpdate(senderId, {
             $addToSet: { 'friendRequests.outgoing': targetReceiverId }
         });
@@ -136,7 +83,6 @@ export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
 
         return res.status(201).json({
             message: 'Friend request sent',
-            request: friendRequest,
             receiver: {
                 _id: receiverUser._id,
                 username: receiverUser.username,

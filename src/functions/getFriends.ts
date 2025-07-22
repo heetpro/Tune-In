@@ -14,7 +14,7 @@ export const getFriends = async (req: AuthRequest, res: Response) => {
         
         // Get all friends of this user
         const friends = await User.find({
-            _id: { $in: user.friends }
+            _id: { $in: user.friends.id }
         }).select('_id displayName firstName lastName profilePicture isOnline lastSeen');
         
         return res.json(friends);

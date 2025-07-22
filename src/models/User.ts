@@ -76,8 +76,10 @@ export const UserSchema = new Schema<IUser>({
     },
     // Friend system fields
     friends: {
-        type: [String],
-        default: [],
+        id: {
+            type: [String],
+            default: [String]
+        }
     },
     friendRequests: {
         incoming: {
