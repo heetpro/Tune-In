@@ -31,6 +31,8 @@ export const removeFriend = async (req: AuthRequest, res: Response) => {
             $pull: { 'friends.id': userId }
         });
 
+
+        
         return res.json({ message: 'Friend removed successfully' });
     } catch (error) {
         console.error('Error removing friend:', error);
