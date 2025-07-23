@@ -13,6 +13,9 @@ import { createAdapter } from '@socket.io/redis-streams-adapter';
 import { middleware } from './handlers/middleware';
 import type { CustomSocket } from './types';
 import { socketService } from './lib/socket';
+import { User } from './models/User';
+import mongoose from 'mongoose';
+import Match from './models/Match';
 
 const app = express();
 const server = http.createServer(app);
@@ -77,6 +80,8 @@ try {
       return;
     }
 
+    console.log(`User connected with ID: ${userId}, type: ${typeof userId}`);
+
     // Join user-specific room
     socket.join(userId);
     socketService.addUser(userId, socket.id);
@@ -86,6 +91,134 @@ try {
     
     // Also send the full list for initial state
     socketService.emitToAll('getOnlineUsers', socketService.getOnlineUsers());
+
+    // Handle getting friends
+    socket.on('getFriends', async (callback) => {
+      try {
+        console.log(`getFriends called with userId: ${userId}, type: ${typeof userId}`);
+    
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+          console.error(`Invalid userId format: ${userId}`);
+          return callback?.({ 
+            status: 'error', 
+            message: 'Invalid user ID format' 
+          });
+        }
+
+        const user = await User.findById(userId);
+        
+        if (!user) {
+          console.error(`User not found with ID: ${userId}`);
+          return callback?.({ 
+            status: 'error', 
+            message: 'User not found' 
+          });
+        }
+
+        console.log(`User found: ${user._id}, checking friends...`);
+        console.log(`Friends structure:`, JSON.stringify(user.friends));
+
+        // Get friend IDs safely
+        const friendIds = (user.friends && user.friends.id && 
+          Array.isArray(user.friends.id)) ? 
+          user.friends.id.filter(id => mongoose.Types.ObjectId.isValid(id)) : 
+          [];
+
+        console.log(`Valid friend IDs: ${friendIds.length}`);
+
+        // Get all friends of this user
+        const friends = await User.find({
+          _id: { $in: friendIds }
+        }).select('_id displayName firstName lastName profilePicture lastSeen');
+        
+        console.log(`Found ${friends.length} friends`);
+        
+        callback?.({ 
+          status: 'ok', 
+          friends: friends 
+        });
+      } catch (error) {
+        console.error('Error getting friends:', error);
+        callback?.({ 
+          status: 'error', 
+          message: 'Failed to get friends' 
+        });
+      }
+    });
+
+    // Get users to chat with
+    socket.on('getUsersToChat', async (callback) => {
+      try {
+        console.log(`getUsersToChat called with userId: ${userId}, type: ${typeof userId}`);
+        
+        
+
+        // Validate ID
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+          console.error(`Invalid userId format: ${userId}`);
+          return callback?.({ 
+            status: 'error', 
+            message: 'Invalid user ID format' 
+          });
+        }
+        
+        const currentUser = await User.findById(userId);
+        if (!currentUser) {
+          return callback?.({ 
+            status: 'error', 
+            message: 'User not found' 
+          });
+        }
+        
+        // Safely get friend IDs
+        const friendIds = (currentUser.friends && 
+                          currentUser.friends.id && 
+                          Array.isArray(currentUser.friends.id)) ? 
+                          currentUser.friends.id.filter(id => mongoose.Types.ObjectId.isValid(id)) : 
+                          [];
+        
+        const acceptedMatches = await Match.find({
+            $or: [
+                { user1Id: userId, status: 'accepted' },
+                { user2Id: userId, status: 'accepted' }
+            ]
+        });
+        
+        const matchedUserIds = acceptedMatches.map(match => 
+            match.user1Id === userId ? match.user2Id : match.user1Id
+        );
+        
+        // Filter out invalid IDs
+        const validMatchedUserIds = matchedUserIds.filter(id => 
+            typeof id === 'string' && mongoose.Types.ObjectId.isValid(id)
+        );
+        
+        const allowedUserIds = [...new Set([...validMatchedUserIds, ...friendIds])];
+        
+        if (allowedUserIds.length === 0) {
+            return callback?.({
+              status: 'ok',
+              users: []
+            });
+        }
+        
+        const users = await User.find({
+            _id: { $in: allowedUserIds }
+        }).select('_id username displayName profilePicture lastSeen');
+        
+        callback?.({
+          status: 'ok',
+          users: users
+        });
+      } catch (error) {
+        console.error('Error getting users to chat:', error);
+        callback?.({
+          status: 'error',
+          message: 'Failed to get users to chat'
+        });
+      }
+    });
 
     // Handle message sending with acknowledgment
     socket.on('send_message', async (data, callback) => {

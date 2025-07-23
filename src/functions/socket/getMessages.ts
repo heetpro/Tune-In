@@ -3,6 +3,7 @@ import Message from "@/models/Message";
 import { User } from "@/models/User";
 import Match from "@/models/Match";
 import type { Response } from "express";
+import mongoose from "mongoose";
 
 export const getMessages = async (req: AuthRequest, res: Response) => {
     try {
@@ -10,13 +11,19 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
         const senderId = req.user._id;
         const senderIdString = senderId.toString();
         
-        const currentUser = await User.findById(senderId);
-        if (!currentUser) {
-            throw new Error('User not found');
+        // Validate IDs
+        if (!mongoose.Types.ObjectId.isValid(senderIdString) || !mongoose.Types.ObjectId.isValid(userToChatId)) {
+            return res.status(400).json({ error: 'Invalid user ID format' });
         }
         
-        // Check if they are friends
-        const isFriend = currentUser.friends && currentUser.friends.id && 
+        const currentUser = await User.findById(senderId);
+        if (!currentUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        // Check if they are friends using the updated model structure
+        const isFriend = currentUser.friends && 
+            currentUser.friends.id && 
             Array.isArray(currentUser.friends.id) && 
             currentUser.friends.id.some(id => id === userToChatId);
         
@@ -28,7 +35,7 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
         });
         
         if (!isFriend && !matchExists) {
-            throw new Error('You can only chat with your friends or accepted matches');
+            return res.status(403).json({ error: 'You can only chat with your friends or accepted matches' });
         }
         
         const messages = await Message.find({

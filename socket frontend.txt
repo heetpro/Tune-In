@@ -520,7 +520,6 @@ const ChatConversation: React.FC = () => {
     }
   };
   
-  const isOnline = participant && onlineUsers.includes(participant.id);
   const isTyping = conversationId && typingUsers[conversationId]?.userId === participant?.id;
 
   return (
@@ -532,9 +531,6 @@ const ChatConversation: React.FC = () => {
               <img src={participant.avatar} alt={participant.name} />
               <div>
                 <h3>{participant.name}</h3>
-                <span className={`status ${isOnline ? 'online' : 'offline'}`}>
-                  {isOnline ? 'Online' : 'Offline'}
-                </span>
               </div>
             </div>
           </div>

@@ -3,6 +3,7 @@ import Conversation from "@/models/Conversation";
 import Match from "@/models/Match";
 import { User } from "@/models/User";
 import type { Response } from "express";
+import mongoose from "mongoose";
 
 export const getChat = async (req: AuthRequest, res: Response) => {
     try {
@@ -12,6 +13,11 @@ export const getChat = async (req: AuthRequest, res: Response) => {
         if (userId === participantId) {
           return res.status(400).json({ error: 'Cannot create conversation with yourself' });
         }
+
+        // Validate IDs
+        if (!mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(participantId)) {
+          return res.status(400).json({ error: 'Invalid user ID format' });
+        }
     
         const user = await User.findById(userId);
         
@@ -20,8 +26,10 @@ export const getChat = async (req: AuthRequest, res: Response) => {
         }
         
         // Check if they are friends
-        const areFriends = user.friends && user.friends.id && Array.isArray(user.friends.id) && 
-          user.friends.id.some(id => id === participantId);
+        const areFriends = user.friends && 
+            user.friends.id && 
+            Array.isArray(user.friends.id) && 
+            user.friends.id.some(id => id === participantId);
         
         const match = await Match.findOne({
           $or: [
@@ -62,7 +70,7 @@ export const getChat = async (req: AuthRequest, res: Response) => {
         });
     
         await conversation.save();
-        await conversation.populate('participants', 'displayName profilePicture isOnline lastSeen');
+        await conversation.populate('participants', 'displayName profilePicture lastSeen');
     
         return res.status(201).json(conversation);
       } catch (error) {

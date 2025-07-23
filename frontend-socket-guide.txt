@@ -49,7 +49,6 @@ export interface ChatUser {
   id: string;
   name: string;
   avatar: string;
-  isOnline?: boolean;
 }
 
 // Conversation schema
@@ -62,7 +61,6 @@ export interface Conversation {
     id: string;
     name: string;
     avatar: string;
-    isOnline: boolean;
   };
 }
 
@@ -482,7 +480,6 @@ const ChatConversation: React.FC<ChatConversationProps> = ({
   } = useChat();
   
   const conversationMessages = messages[recipientId] || [];
-  const isOnline = onlineUsers.includes(recipientId);
   const isTyping = typingUsers[conversationId]?.userId === recipientId;
   const currentUserId = getUserId();
   
@@ -524,9 +521,6 @@ const ChatConversation: React.FC<ChatConversationProps> = ({
     <div className="chat-conversation">
       <div className="chat-header">
         <h3>{recipientName}</h3>
-        <span className={`status ${isOnline ? 'online' : 'offline'}`}>
-          {isOnline ? 'Online' : 'Offline'}
-        </span>
       </div>
       
       <div className="messages-container">

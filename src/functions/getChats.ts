@@ -11,7 +11,7 @@ export const getChats = async (req: AuthRequest, res: Response) => {
             isActive: true,
 
         }).sort({ updatedAt: -1 })
-        .populate('participants', 'displayName profilePicture isOnline lastSeen')
+        .populate('participants', 'displayName profilePicture lastSeen')
         .limit(50);
 
         return res.json(conversations);
