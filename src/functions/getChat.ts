@@ -19,7 +19,9 @@ export const getChat = async (req: AuthRequest, res: Response) => {
           return res.status(404).json({ error: 'User not found' });
         }
         
-        const areFriends = user.friends.includes(participantId);
+        // Check if they are friends
+        const areFriends = user.friends && user.friends.id && Array.isArray(user.friends.id) && 
+          user.friends.id.some(id => id === participantId);
         
         const match = await Match.findOne({
           $or: [

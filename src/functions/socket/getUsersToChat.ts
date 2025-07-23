@@ -12,7 +12,10 @@ export const getUsersToChat = async (req: AuthRequest, res: Response) => {
             throw new Error('User not found');
         }
         
-        const friendIds = currentUser.friends || [];
+        // Get friend IDs safely
+        const friendIds = (currentUser.friends && currentUser.friends.id && 
+            Array.isArray(currentUser.friends.id)) ? 
+            currentUser.friends.id : [];
         
         const acceptedMatches = await Match.find({
             $or: [

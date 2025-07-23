@@ -15,7 +15,10 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
             throw new Error('User not found');
         }
         
-        const isFriend = currentUser.friends && currentUser.friends.includes(userToChatId);
+        // Check if they are friends
+        const isFriend = currentUser.friends && currentUser.friends.id && 
+            Array.isArray(currentUser.friends.id) && 
+            currentUser.friends.id.some(id => id === userToChatId);
         
         const matchExists = await Match.findOne({
             $or: [
