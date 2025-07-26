@@ -57,9 +57,6 @@ router.get('/messages/:id', authenticate, asyncHandler(getMessages));
 
 router.post('/messages/send/:id', authenticate, asyncHandler(sendMessage));
 
-// Spotify endpoints
-// Note: Initial sync now happens automatically during login
-// This endpoint is for manual refreshes of Spotify data
 router.get('/spotify/sync', authenticate, asyncHandler(syncSpotifyData));
 router.get('/spotify/profile', authenticate, asyncHandler(getMyProfile));
 router.get('/spotify/profile/:id', authenticate, asyncHandler(getMusicProfile));
