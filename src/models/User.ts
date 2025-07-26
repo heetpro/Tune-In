@@ -1,9 +1,9 @@
 import type { IUser } from "@/types";
-import mongoose, { Schema , model} from "mongoose";
+import mongoose, { Schema, model } from "mongoose";
 
 
 export const UserSchema = new Schema<IUser>({
-   
+
     spotifyId: {
         type: String,
         required: true,
@@ -78,17 +78,22 @@ export const UserSchema = new Schema<IUser>({
     friends: {
         id: {
             type: [String],
-            default: [String]
+            default: []
         }
     },
     friendRequests: {
         incoming: {
-            type: [String],
-            default: [],
+            id: {
+                type: [String],
+                default: []
+            }
+            
         },
         outgoing: {
-            type: [String],
-            default: [],
+            id: {
+                type: [String],
+                default: []
+            }
         },
     },
     privacySettings: {

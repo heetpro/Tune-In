@@ -77,7 +77,8 @@ router.get('/health', (req, res) => {
 router.get('/friends', authenticate, asyncHandler(getFriends));
 router.get('/search', authenticate, asyncHandler(searchUsers));
 router.get('/requests', authenticate, asyncHandler(getFriendRequests));
-router.post('/request', authenticate, asyncHandler(sendFriendRequest));
+router.post('/request/:id', authenticate, asyncHandler(sendFriendRequest));
+
 router.put('/request/:requestId/accept', authenticate, asyncHandler(acceptFriendRequest));
 router.put('/request/:requestId/reject', authenticate, asyncHandler(rejectFriendRequest));
 router.delete('/:friendId', authenticate, asyncHandler(removeFriend));

@@ -48,14 +48,10 @@ export interface IUser extends Document {
     friends: {
       id: string[];
     }
-    friendRequests: {
-      incoming: {
-        id: string[];
-      }
-      outgoing: {
-        id: string[];
-      }
-    }
+  friendRequests: {
+  incoming: { id: string[] },
+  outgoing: { id: string[] }
+}
     privacySettings: {
         showAge: boolean;
         showLocation: boolean;

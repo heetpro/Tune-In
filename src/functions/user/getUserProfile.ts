@@ -24,7 +24,7 @@ console.log("USER:::::::::::::::::::::::::::::::::",user);
         });
         
         return res.json({
-            id: user._id,
+            _id: user._id,
             spotifyId: user.spotifyId,
             username: user.username || null,
             displayName: user.displayName,
@@ -51,6 +51,7 @@ console.log("USER:::::::::::::::::::::::::::::::::",user);
             isAdmin: user.isAdmin || false,
         });
     }
+    
     catch (error) {
         console.error('Error getting profile:', error);
         return res.status(500).json({ error: 'Internal server error' });

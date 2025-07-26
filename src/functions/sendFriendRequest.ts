@@ -1,21 +1,22 @@
 import type { AuthRequest } from "@/middleware/auth";
 import { User } from "@/models/User";
+import { log } from "console";
 import type { Response } from "express";
 
 export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
     try {
-        const { receiverId, username } = req.body;
+        const { id } = req.params;
         const senderId = req.user._id;
-        let targetReceiverId = receiverId;
+        let targetReceiverId = id;
 
         // Check if either receiverId or username is provided
-        if (!receiverId && !username) {
+        if (!targetReceiverId) {
             return res.status(400).json({ error: 'Either receiverId or username is required' });
         }
 
         // If username is provided but not receiverId, find the user by username
-        if (!receiverId && username) {
-            const receiver = await User.findOne({ username: username.toLowerCase() });
+        if (!targetReceiverId) {
+            const receiver = await User.findOne({ username: targetReceiverId });
             if (!receiver) {
                 return res.status(404).json({ error: 'User not found with the provided username' });
             }
@@ -39,12 +40,13 @@ export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ error: 'Sender user not found' });
         }
 
+        log("SENDER USER:::::::::::::::::::::::::::::::::", targetReceiverId);
+
         if (senderUser.friends.id.includes(targetReceiverId)) {
             return res.status(400).json({ error: 'Users are already friends' });
         }
 
-        // Check if receiver has already sent a request to the sender
-        if (senderUser.friendRequests.incoming.id.includes(targetReceiverId)) {
+        if ((senderUser.friendRequests.incoming.id as string[]).includes(targetReceiverId)) {
             // Accept the request automatically
             await User.findByIdAndUpdate(senderId, {
                 $addToSet: { 'friends.id': targetReceiverId },
@@ -74,13 +76,21 @@ export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
 
         // Send the friend request by updating both users
         await User.findByIdAndUpdate(senderId, {
-            $addToSet: { 'friendRequests.outgoing': targetReceiverId }
+            $addToSet: { 'friendRequests.outgoing.id': targetReceiverId }
         });
-
         await User.findByIdAndUpdate(targetReceiverId, {
-            $addToSet: { 'friendRequests.incoming': senderId }
+            $addToSet: { 'friendRequests.incoming.id': senderId }
         });
 
+        // Auto‑accept existing incoming:
+        await User.findByIdAndUpdate(senderId, {
+            $addToSet: { 'friends.id': targetReceiverId },
+            $pull: { 'friendRequests.incoming.id': targetReceiverId }
+        });
+        await User.findByIdAndUpdate(targetReceiverId, {
+            $addToSet: { 'friends.id': senderId },
+            $pull: { 'friendRequests.outgoing.id': senderId }
+        });
         return res.status(201).json({
             message: 'Friend request sent',
             receiver: {
@@ -90,6 +100,7 @@ export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
                 profilePicture: receiverUser.profilePicture
             }
         });
+        
     } catch (error) {
         console.error('Error sending friend request:', error);
         return res.status(500).json({ error: 'Failed to send friend request' });
