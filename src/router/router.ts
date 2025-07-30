@@ -44,19 +44,13 @@ router.post('/logout', asyncHandler(getLogout));
 router.get('/spotify/callback', asyncHandler(getCallback));
 router.get('/profile/me', authenticate, asyncHandler(getProfile));
 router.get('/profile/:id', authenticate, asyncHandler(getUserProfile));
-
-
 router.get('/auth/check', authenticate, asyncHandler(checkUserExists));
 router.post('/username', authenticate, asyncHandler(setUsername));
 router.post('/profile/edit', authenticate, asyncHandler(editProfile));
-
 router.get('/onboarding', authenticate, asyncHandler(checkOnboarding));
-
 router.get('/messages/users', authenticate, asyncHandler(getUsersToChat));
 router.get('/messages/:id', authenticate, asyncHandler(getMessages));
-
 router.post('/messages/send/:id', authenticate, asyncHandler(sendMessage));
-
 router.get('/spotify/sync', authenticate, asyncHandler(syncSpotifyData));
 router.get('/spotify/profile', authenticate, asyncHandler(getMyProfile));
 router.get('/spotify/profile/:id', authenticate, asyncHandler(getMusicProfile));
@@ -67,13 +61,9 @@ router.get('/spotify/profile/:id', authenticate, asyncHandler(getMusicProfile));
 // router.get('/spotify/current-track', authenticate, asyncHandler(getCurrentTrack));
 // router.get('/spotify/top-genres', authenticate, asyncHandler(getTopGenres));
 // router.get('/spotify/audio-features', authenticate, asyncHandler(getAudioFeatures));
-
-
 // router.get('/health', (req, res) => {
 //     res.json({ status: 'OK', timestamp: new Date().toISOString() });
 // });
-
-
 router.get('/friends', authenticate, asyncHandler(getFriends));
 router.get('/search', authenticate, asyncHandler(searchUsers));
 router.get('/requests', authenticate, asyncHandler(getFriendRequests));
