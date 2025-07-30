@@ -69,9 +69,9 @@ router.get('/spotify/top-tracks', authenticate, asyncHandler(getTopTracks));
 // router.get('/spotify/audio-features', authenticate, asyncHandler(getAudioFeatures));
 
 
-router.get('/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
-});
+// router.get('/health', (req, res) => {
+//     res.json({ status: 'OK', timestamp: new Date().toISOString() });
+// });
 
 
 router.get('/friends', authenticate, asyncHandler(getFriends));
