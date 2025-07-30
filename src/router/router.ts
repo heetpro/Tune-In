@@ -65,7 +65,7 @@ router.get('/spotify/top-tracks', authenticate, asyncHandler(getTopTracks));
 router.get('/spotify/recent-tracks', authenticate, asyncHandler(getRecentTracks));
 router.get('/spotify/playlists', authenticate, asyncHandler(getPlaylists));
 router.get('/spotify/current-track', authenticate, asyncHandler(getCurrentTrack));
-router.get('/spotify/top-genres', authenticate, asyncHandler(getTopGenres));
+// router.get('/spotify/top-genres', authenticate, asyncHandler(getTopGenres));
 router.get('/spotify/audio-features', authenticate, asyncHandler(getAudioFeatures));
 
 
