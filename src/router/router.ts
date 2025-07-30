@@ -61,7 +61,7 @@ router.get('/spotify/sync', authenticate, asyncHandler(syncSpotifyData));
 router.get('/spotify/profile', authenticate, asyncHandler(getMyProfile));
 router.get('/spotify/profile/:id', authenticate, asyncHandler(getMusicProfile));
 router.get('/spotify/top-artists', authenticate, asyncHandler(getTopArtists));
-router.get('/spotify/top-tracks', authenticate, asyncHandler(getTopTracks));
+// router.get('/spotify/top-tracks', authenticate, asyncHandler(getTopTracks));
 // router.get('/spotify/recent-tracks', authenticate, asyncHandler(getRecentTracks));
 // router.get('/spotify/playlists', authenticate, asyncHandler(getPlaylists));
 // router.get('/spotify/current-track', authenticate, asyncHandler(getCurrentTrack));
