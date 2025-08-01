@@ -23,7 +23,7 @@ const AlbumSchema = new Schema({
     spotifyId: String,
     albumType: String,
     genres: [String],
-    name: String,
+    name: String,   
     artists: [ArtistSchema],
     images: [SpotifyImageSchema],
     releaseDate: Date,

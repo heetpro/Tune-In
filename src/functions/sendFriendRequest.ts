@@ -9,12 +9,10 @@ export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
         const senderId = req.user._id;
         let targetReceiverId = id;
 
-        // Check if either receiverId or username is provided
         if (!targetReceiverId) {
             return res.status(400).json({ error: 'Either receiverId or username is required' });
         }
 
-        // If username is provided but not receiverId, find the user by username
         if (!targetReceiverId) {
             const receiver = await User.findOne({ username: targetReceiverId });
             if (!receiver) {
@@ -23,18 +21,15 @@ export const sendFriendRequest = async (req: AuthRequest, res: Response) => {
             targetReceiverId = receiver._id.toString();
         }
 
-        // Cannot send request to yourself
         if (senderId.toString() === targetReceiverId) {
             return res.status(400).json({ error: 'Cannot send friend request to yourself' });
         }
 
-        // Check if receiver exists
         const receiverUser = await User.findById(targetReceiverId);
         if (!receiverUser) {
             return res.status(404).json({ error: 'Receiver not found' });
         }
 
-        // Check if users are already friends
         const senderUser = await User.findById(senderId);
         if (!senderUser) {
             return res.status(404).json({ error: 'Sender user not found' });
